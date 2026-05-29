@@ -7,6 +7,7 @@ import {
   Search,
   User,
 } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,80 +20,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { defaultContracts } from "@/data/contracts"
 
-const defaultContracts = [
-  {
-    folder: "0",
-    end: "31/12/2027",
-    address: "colon 2517",
-    status: "Alquiler",
-    tenant: "marinangeli, martin",
-    owner: "ranni, abel ernesto",
-  },
-  {
-    folder: "1",
-    end: "31/8/2025",
-    address: "rivadavia 4686",
-    status: "Vencido",
-    tenant: "llorente, emiliano carlos",
-    owner: "ranni, abel ernesto",
-  },
-  {
-    folder: "1",
-    end: "31/1/2028",
-    address: "rivadavia 4686",
-    status: "Alquiler",
-    tenant: "fuhr, juse luiz",
-    owner: "ranni, abel ernesto",
-  },
-  {
-    folder: "2",
-    end: "31/5/2027",
-    address: "rivadavia 4686",
-    status: "Alquiler",
-    tenant: "cuellar moreno, rosario del pilar",
-    owner: "ranni, abel ernesto",
-  },
-  {
-    folder: "3",
-    end: "30/4/2026",
-    address: "vicente lopez 2195",
-    status: "Vencido",
-    tenant: "gasparin, ruben dario",
-    owner: "rossi, ana maria",
-  },
-  {
-    folder: "3",
-    end: "30/4/2028",
-    address: "av. Del valle 2696",
-    status: "Alquiler",
-    tenant: "gasparin, ruben dario",
-    owner: "rossi, ana maria",
-  },
-  {
-    folder: "4",
-    end: "31/8/2027",
-    address: "del valle 3001 lavadero",
-    status: "Alquiler",
-    tenant: "BANOVIC, ADRIANA MONICA",
-    owner: "rossi, ana maria",
-  },
-  {
-    folder: "5",
-    end: "31/8/2026",
-    address: "colon 2670 kiosco",
-    status: "Alquiler",
-    tenant: "biondi, maria paz",
-    owner: "rossi, ana maria",
-  },
-]
+function ContractsTable({
+  contracts = defaultContracts,
+  onOpenContract,
+  onOpenProperty,
+}) {
+  const { t } = useTranslation()
 
-function ContractsTable({ contracts = defaultContracts }) {
   return (
     <section className="w-full space-y-4">
       <div className="flex justify-center">
         <div className="relative w-full max-w-sm">
-          <Input className="pr-9" aria-label="Buscar" placeholder="Buscar" />
+          <Input
+            className="pr-9"
+            aria-label={t("table.search")}
+            placeholder={t("table.search")}
+          />
           <Search className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
         </div>
       </div>
@@ -109,12 +54,12 @@ function ContractsTable({ contracts = defaultContracts }) {
           </colgroup>
           <TableHeader>
             <TableRow>
-              <HeaderCell icon={Folder}>Cpta.</HeaderCell>
-              <HeaderCell icon={CalendarDays}>Fin</HeaderCell>
-              <HeaderCell icon={Home}>Direccion</HeaderCell>
-              <HeaderCell icon={CircleHelp}>Estado</HeaderCell>
-              <HeaderCell icon={User}>Cobros</HeaderCell>
-              <HeaderCell icon={User}>Liquidacion</HeaderCell>
+              <HeaderCell icon={Folder}>{t("table.columns.folder")}</HeaderCell>
+              <HeaderCell icon={CalendarDays}>{t("table.columns.end")}</HeaderCell>
+              <HeaderCell icon={Home}>{t("table.columns.address")}</HeaderCell>
+              <HeaderCell icon={CircleHelp}>{t("table.columns.status")}</HeaderCell>
+              <HeaderCell icon={User}>{t("table.columns.collections")}</HeaderCell>
+              <HeaderCell icon={User}>{t("table.columns.settlement")}</HeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -122,6 +67,8 @@ function ContractsTable({ contracts = defaultContracts }) {
               <ContractRow
                 contract={contract}
                 key={`${contract.folder}-${contract.end}-${index}`}
+                onOpenContract={onOpenContract}
+                onOpenProperty={onOpenProperty}
               />
             ))}
           </TableBody>
@@ -142,19 +89,38 @@ function HeaderCell({ children, icon: Icon }) {
   )
 }
 
-function ContractRow({ contract }) {
+function ContractRow({ contract, onOpenContract, onOpenProperty }) {
   const expired = contract.status === "Vencido"
+  const { t } = useTranslation()
 
   return (
     <TableRow>
-      <TableCell>{contract.folder}</TableCell>
+      <TableCell>
+        <Button
+          className="h-auto min-w-7 justify-start px-1 font-semibold text-primary"
+          onClick={() => onOpenContract?.(contract)}
+          size="xs"
+          variant="ghost"
+        >
+          {contract.folder}
+        </Button>
+      </TableCell>
       <TableCell className={expired ? "text-destructive" : undefined}>
         {contract.end}
       </TableCell>
-      <TableCell>{contract.address}</TableCell>
+      <TableCell>
+        <Button
+          className="h-auto max-w-full justify-start px-1 font-semibold text-primary"
+          onClick={() => onOpenProperty?.(contract)}
+          size="xs"
+          variant="ghost"
+        >
+          <span className="truncate">{contract.address}</span>
+        </Button>
+      </TableCell>
       <TableCell>
         <Badge variant={expired ? "destructive" : "secondary"}>
-          {contract.status}
+          {expired ? t("status.expired") : t("status.activeRent")}
         </Badge>
       </TableCell>
       <PersonCell name={contract.tenant} />
@@ -164,13 +130,15 @@ function ContractRow({ contract }) {
 }
 
 function PersonCell({ name }) {
+  const { t } = useTranslation()
+
   return (
     <TableCell>
       <div className="flex min-w-0 items-center gap-2">
-        <Button aria-label="Buscar persona" size="icon-sm" variant="ghost">
+        <Button aria-label={t("actions.searchPerson")} size="icon-sm" variant="ghost">
           <Search />
         </Button>
-        <Button aria-label="Abrir ficha" size="icon-sm" variant="ghost">
+        <Button aria-label={t("actions.openRecord")} size="icon-sm" variant="ghost">
           <BookOpen />
         </Button>
         <span className="truncate">{name}</span>

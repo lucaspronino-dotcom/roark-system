@@ -1,28 +1,57 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import js from "@eslint/js"
+import checkFile from "eslint-plugin-check-file"
+import reactHooks from "eslint-plugin-react-hooks"
+import reactRefresh from "eslint-plugin-react-refresh"
+import globals from "globals"
+import prettier from "eslint-config-prettier"
+import { defineConfig, globalIgnores } from "eslint/config"
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(["dist"]),
   {
-    files: ['**/*.{js,jsx}'],
+    files: ["**/*.{js,jsx}"],
     extends: [
       js.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
+      prettier,
     ],
+    plugins: {
+      "check-file": checkFile,
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+    },
     languageOptions: {
+      ecmaVersion: 2020,
       globals: globals.browser,
-      parserOptions: { ecmaFeatures: { jsx: true } },
+      parserOptions: {
+        ecmaVersion: "latest",
+        ecmaFeatures: { jsx: true },
+        sourceType: "module",
+      },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^React$' }],
-      'react-refresh/only-export-components': [
-        'error',
-        { allowExportNames: ['buttonVariants', 'badgeVariants'] },
+      ...reactHooks.configs["recommended-latest"].rules,
+      ...reactRefresh.configs.vite.rules,
+    },
+  },
+  {
+    files: ["src/components/**/*.{js,jsx}"],
+    ignores: ["src/components/ui/**/*"],
+    plugins: {
+      "check-file": checkFile,
+    },
+    rules: {
+      "check-file/filename-naming-convention": [
+        "error",
+        {
+          "**/*.{js,jsx}": "PASCAL_CASE",
+        },
       ],
+    },
+  },
+  {
+    files: ["src/components/ui/**/*.{js,jsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
 ])
