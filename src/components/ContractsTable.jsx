@@ -26,6 +26,7 @@ function ContractsTable({
   contracts = defaultContracts,
   onOpenContract,
   onOpenProperty,
+  onOpenRentSettlement,
 }) {
   const { t } = useTranslation()
 
@@ -69,6 +70,7 @@ function ContractsTable({
                 key={`${contract.folder}-${contract.end}-${index}`}
                 onOpenContract={onOpenContract}
                 onOpenProperty={onOpenProperty}
+                onOpenRentSettlement={onOpenRentSettlement}
               />
             ))}
           </TableBody>
@@ -89,7 +91,12 @@ function HeaderCell({ children, icon: Icon }) {
   )
 }
 
-function ContractRow({ contract, onOpenContract, onOpenProperty }) {
+function ContractRow({
+  contract,
+  onOpenContract,
+  onOpenProperty,
+  onOpenRentSettlement,
+}) {
   const expired = contract.status === "Vencido"
   const { t } = useTranslation()
 
@@ -123,25 +130,36 @@ function ContractRow({ contract, onOpenContract, onOpenProperty }) {
           {expired ? t("status.expired") : t("status.activeRent")}
         </Badge>
       </TableCell>
-      <PersonCell name={contract.tenant} />
+      <PersonCell
+        name={contract.tenant}
+        onOpen={() => onOpenRentSettlement?.(contract)}
+      />
       <PersonCell name={contract.owner} />
     </TableRow>
   )
 }
 
-function PersonCell({ name }) {
+function PersonCell({ name, onOpen }) {
   const { t } = useTranslation()
 
   return (
     <TableCell>
       <div className="flex min-w-0 items-center gap-2">
-        <Button aria-label={t("actions.searchPerson")} size="icon-sm" variant="ghost">
-          <Search />
-        </Button>
         <Button aria-label={t("actions.openRecord")} size="icon-sm" variant="ghost">
           <BookOpen />
         </Button>
-        <span className="truncate">{name}</span>
+        {onOpen ? (
+          <Button
+            className="h-auto min-w-0 justify-start px-1"
+            onClick={onOpen}
+            size="xs"
+            variant="ghost"
+          >
+            <span className="truncate">{name}</span>
+          </Button>
+        ) : (
+          <span className="truncate">{name}</span>
+        )}
       </div>
     </TableCell>
   )

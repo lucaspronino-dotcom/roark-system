@@ -1,17 +1,26 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Moon, Sun } from "lucide-react"
+import { Moon, Palette, Sun } from "lucide-react"
 
 import { ContractRecord } from "@/components/ContractRecord"
 import { ContractsTable } from "@/components/ContractsTable"
+import { RentSettlement } from "@/components/RentSettlement"
 import { PropertyDetail } from "@/components/PropertyDetail"
 import { Label } from "@/components/ui/label"
 import { defaultContracts } from "@/data/contracts"
 import { i18nOptions } from "@/i18n"
 
+const themeFamilyOptions = ["default", "claudePlus", "deSwissDesign"]
+const colorModeOptions = ["light", "dark"]
+
 function App() {
-  const [view, setView] = useState({ name: "contracts" })
-  const [theme, setThemeState] = useState(getInitialTheme)
+  const [view, setView] = useState({
+    name: "property",
+    property: defaultContracts[1],
+  })
+  const [themeSettings, setThemeSettings] = useState(getInitialTheme)
+  const themeFamily = themeSettings.family
+  const colorMode = themeSettings.mode
   const { i18n, t } = useTranslation()
 
   function handleLocaleChange(nextLocale) {
@@ -19,10 +28,16 @@ function App() {
     i18n.changeLanguage(nextLocale)
   }
 
-  function setTheme(nextTheme) {
-    document.documentElement.classList.toggle("dark", nextTheme === "dark")
-    localStorage.setItem("theme", nextTheme)
-    setThemeState(nextTheme)
+  function setThemeFamily(nextThemeFamily) {
+    applyTheme(nextThemeFamily, colorMode)
+    localStorage.setItem("themeFamily", nextThemeFamily)
+    setThemeSettings({ family: nextThemeFamily, mode: colorMode })
+  }
+
+  function setColorMode(nextColorMode) {
+    applyTheme(themeFamily, nextColorMode)
+    localStorage.setItem("colorMode", nextColorMode)
+    setThemeSettings({ family: themeFamily, mode: nextColorMode })
   }
 
   return (
@@ -45,17 +60,36 @@ function App() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <Label htmlFor="theme">{t("theme.label")}</Label>
+            <Label htmlFor="theme-family">{t("themeFamily.label")}</Label>
             <select
               className="h-8 border border-input bg-background px-2 text-xs"
-              id="theme"
-              onChange={(event) => setTheme(event.target.value)}
-              value={theme}
+              id="theme-family"
+              onChange={(event) => setThemeFamily(event.target.value)}
+              value={themeFamily}
             >
-              <option value="light">{t("theme.light")}</option>
-              <option value="dark">{t("theme.dark")}</option>
+              {themeFamilyOptions.map((availableThemeFamily) => (
+                <option key={availableThemeFamily} value={availableThemeFamily}>
+                  {t(`themeFamily.${availableThemeFamily}`)}
+                </option>
+              ))}
             </select>
-            {theme === "dark" ? (
+            <Palette className="size-4 text-muted-foreground" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="color-mode">{t("colorMode.label")}</Label>
+            <select
+              className="h-8 border border-input bg-background px-2 text-xs"
+              id="color-mode"
+              onChange={(event) => setColorMode(event.target.value)}
+              value={colorMode}
+            >
+              {colorModeOptions.map((availableColorMode) => (
+                <option key={availableColorMode} value={availableColorMode}>
+                  {t(`colorMode.${availableColorMode}`)}
+                </option>
+              ))}
+            </select>
+            {colorMode === "dark" ? (
               <Moon className="size-4 text-muted-foreground" />
             ) : (
               <Sun className="size-4 text-muted-foreground" />
@@ -74,11 +108,20 @@ function App() {
             property={view.property}
           />
         ) : null}
+        {view.name === "rentSettlement" ? (
+          <RentSettlement
+            contract={view.contract}
+            onBack={() => setView({ name: "contracts" })}
+          />
+        ) : null}
         {view.name === "contracts" ? (
           <ContractsTable
             contracts={defaultContracts}
             onOpenContract={(contract) => setView({ name: "contract", contract })}
             onOpenProperty={(property) => setView({ name: "property", property })}
+            onOpenRentSettlement={(contract) =>
+              setView({ name: "rentSettlement", contract })
+            }
           />
         ) : null}
       </div>
@@ -87,13 +130,39 @@ function App() {
 }
 
 function getInitialTheme() {
-  const storedTheme = localStorage.getItem("theme")
+  const storedThemeFamily = localStorage.getItem("themeFamily")
+  const storedColorMode = localStorage.getItem("colorMode")
+  const legacyTheme = localStorage.getItem("theme")
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-  const theme = storedTheme ?? (prefersDark ? "dark" : "light")
+  const fallbackColorMode = prefersDark ? "dark" : "light"
+  const family = themeFamilyOptions.includes(storedThemeFamily)
+    ? storedThemeFamily
+    : legacyTheme === "claudePlus"
+      ? "claudePlus"
+      : legacyTheme === "deSwissDesign"
+        ? "deSwissDesign"
+      : "default"
+  const mode = colorModeOptions.includes(storedColorMode)
+    ? storedColorMode
+    : colorModeOptions.includes(legacyTheme)
+      ? legacyTheme
+      : fallbackColorMode
 
-  document.documentElement.classList.toggle("dark", theme === "dark")
+  applyTheme(family, mode)
 
-  return theme
+  return { family, mode }
+}
+
+function applyTheme(themeFamily, colorMode) {
+  document.documentElement.classList.toggle("dark", colorMode === "dark")
+  document.documentElement.classList.toggle(
+    "theme-claude-plus",
+    themeFamily === "claudePlus",
+  )
+  document.documentElement.classList.toggle(
+    "theme-de-swiss-design",
+    themeFamily === "deSwissDesign",
+  )
 }
 
 export default App
