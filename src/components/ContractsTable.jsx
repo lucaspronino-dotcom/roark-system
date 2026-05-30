@@ -7,11 +7,14 @@ import {
   Search,
   User,
 } from "lucide-react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { OwnerAccountModal } from "@/components/OwnerAccountModal"
+import { PaymentDetailsModal } from "@/components/PaymentDetailsModal"
 import {
   Table,
   TableBody,
@@ -29,6 +32,8 @@ function ContractsTable({
   onOpenRentSettlement,
 }) {
   const { t } = useTranslation()
+  const [selectedOwner, setSelectedOwner] = useState(null)
+  const [selectedPaymentDetails, setSelectedPaymentDetails] = useState(null)
 
   return (
     <section className="w-full space-y-4">
@@ -71,11 +76,26 @@ function ContractsTable({
                 onOpenContract={onOpenContract}
                 onOpenProperty={onOpenProperty}
                 onOpenRentSettlement={onOpenRentSettlement}
+                onOpenOwnerAccount={setSelectedOwner}
+                onOpenPaymentDetails={setSelectedPaymentDetails}
               />
             ))}
           </TableBody>
         </Table>
       </div>
+
+      {selectedOwner ? (
+        <OwnerAccountModal
+          onClose={() => setSelectedOwner(null)}
+          ownerName={selectedOwner}
+        />
+      ) : null}
+      {selectedPaymentDetails ? (
+        <PaymentDetailsModal
+          onClose={() => setSelectedPaymentDetails(null)}
+          personName={selectedPaymentDetails}
+        />
+      ) : null}
     </section>
   )
 }
@@ -95,6 +115,8 @@ function ContractRow({
   contract,
   onOpenContract,
   onOpenProperty,
+  onOpenOwnerAccount,
+  onOpenPaymentDetails,
   onOpenRentSettlement,
 }) {
   const expired = contract.status === "Vencido"
@@ -131,21 +153,31 @@ function ContractRow({
         </Badge>
       </TableCell>
       <PersonCell
+        onOpenBook={() => onOpenPaymentDetails?.(contract.tenant)}
         name={contract.tenant}
         onOpen={() => onOpenRentSettlement?.(contract)}
       />
-      <PersonCell name={contract.owner} />
+      <PersonCell
+        name={contract.owner}
+        onOpenBook={() => onOpenPaymentDetails?.(contract.owner)}
+        onOpen={() => onOpenOwnerAccount?.(contract.owner)}
+      />
     </TableRow>
   )
 }
 
-function PersonCell({ name, onOpen }) {
+function PersonCell({ name, onOpen, onOpenBook }) {
   const { t } = useTranslation()
 
   return (
     <TableCell>
       <div className="flex min-w-0 items-center gap-2">
-        <Button aria-label={t("actions.openRecord")} size="icon-sm" variant="ghost">
+        <Button
+          aria-label={t("actions.openRecord")}
+          onClick={onOpenBook}
+          size="icon-sm"
+          variant="ghost"
+        >
           <BookOpen />
         </Button>
         {onOpen ? (

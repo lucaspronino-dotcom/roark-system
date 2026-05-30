@@ -1,4 +1,4 @@
-import { ArrowLeft, Trash2 } from "lucide-react"
+import { ArrowLeft, Printer, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -273,6 +273,16 @@ function RentSettlement({ contract, onBack }) {
                     label={balanceLabel}
                     value={formatCurrency(balance)}
                   />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button className="order-1 bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground">
+                      <Printer />
+                      {t("rentSettlement.actions.printSettlement")}
+                    </Button>
+                    <Button className="order-2">
+                      <Printer />
+                      {t("rentSettlement.actions.confirmAndPrint")}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </>

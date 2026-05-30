@@ -1,0 +1,85 @@
+import { Save, Trash2, X } from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+function NewOwnerModal({ onClose }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
+      <Card className="flex max-h-[86vh] w-full max-w-2xl flex-col">
+        <CardHeader className="border-b">
+          <CardTitle className="text-base font-medium">
+            {t("newOwner.title")}
+          </CardTitle>
+          <CardAction>
+            <Button
+              aria-label={t("actions.close")}
+              onClick={onClose}
+              size="icon-sm"
+              variant="ghost"
+            >
+              <X />
+            </Button>
+          </CardAction>
+        </CardHeader>
+
+        <CardContent className="flex min-h-0 flex-1 flex-col pt-4">
+          <div className="border-b">
+            <Button size="sm" variant="secondary">
+              {t("propertyDetail.tabs.mainData")}
+            </Button>
+          </div>
+
+          <div className="overflow-y-auto p-6">
+            <section className="mx-auto max-w-md space-y-5">
+              <h2 className="border-b border-primary/40 pb-1 text-2xl font-semibold text-primary">
+                {t("newOwner.sections.personalData")}
+              </h2>
+              <div className="space-y-3">
+                <Field autoFocus label={t("newOwner.fields.name")} />
+                <Field label={t("newOwner.fields.lastName")} />
+                <Field label={t("newOwner.fields.address")} />
+                <Field label={t("newOwner.fields.city")} />
+                <Field label={t("newOwner.fields.phone")} short />
+                <Field label={t("newOwner.fields.email")} />
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-auto flex justify-end gap-3 border-t bg-muted/40 p-3">
+            <Button onClick={onClose} variant="outline">
+              <Trash2 />
+              {t("actions.delete")}
+            </Button>
+            <Button onClick={onClose}>
+              <Save />
+              {t("actions.saveAndExit")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function Field({ autoFocus = false, label, short = false }) {
+  return (
+    <div className={short ? "max-w-xs space-y-1" : "space-y-1"}>
+      <Label>{label}</Label>
+      <Input autoFocus={autoFocus} />
+    </div>
+  )
+}
+
+export { NewOwnerModal }
