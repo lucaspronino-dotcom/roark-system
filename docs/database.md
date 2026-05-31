@@ -154,21 +154,26 @@ The initial migration creates:
 
 - `people`
 - `tenants`
+- `owners`
+- `properties`
+- `contracts`
 
-`people.dni` is unique. `tenants.personId` is unique and references
-`people.id`, so a person can have one tenant profile for now.
+`people.dni` is unique. `tenants.personId` and `owners.personId` are unique and
+reference `people.id`, so a person can have one tenant profile and one owner
+profile for now.
 
 ## Seed data
 
-The initial seed migrates the current hardcoded sample tenants into the database:
+The initial seed migrates the current hardcoded sample contracts into the
+database:
 
 ```bash
 npm run db:seed -w @roark/api
 ```
 
-The seed is idempotent and uses stable demo DNI values from `90000000` to
-`90000006` because the old hardcoded frontend data does not include real DNI
-values yet.
+The seed is idempotent and creates sample people, tenants, owners, properties,
+and contracts. It uses stable demo DNI values because the old hardcoded frontend
+data does not include real DNI values yet.
 
 ## Production notes
 

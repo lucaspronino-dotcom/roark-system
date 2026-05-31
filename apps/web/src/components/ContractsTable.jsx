@@ -31,6 +31,8 @@ import { defaultContracts } from "@/data/contracts"
 
 function ContractsTable({
   contracts = defaultContracts,
+  error,
+  isLoading = false,
   onOpenContract,
   onOpenProperty,
   onOpenRentSettlement,
@@ -103,6 +105,27 @@ function ContractsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell className="text-muted-foreground" colSpan={6}>
+                  {t("table.loading")}
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {error ? (
+              <TableRow>
+                <TableCell className="text-destructive" colSpan={6}>
+                  {t("table.loadError")}
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {!isLoading && !error && contracts.length === 0 ? (
+              <TableRow>
+                <TableCell className="text-muted-foreground" colSpan={6}>
+                  {t("table.empty")}
+                </TableCell>
+              </TableRow>
+            ) : null}
             {contracts.map((contract, index) => (
               <ContractRow
                 contract={contract}

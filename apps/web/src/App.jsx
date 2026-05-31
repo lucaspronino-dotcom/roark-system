@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Moon, Palette, Sun } from "lucide-react"
 
@@ -7,18 +7,51 @@ import { ContractsTable } from "@/components/ContractsTable"
 import { RentSettlement } from "@/components/RentSettlement"
 import { PropertyDetail } from "@/components/PropertyDetail"
 import { Label } from "@/components/ui/label"
-import { defaultContracts } from "@/data/contracts"
 import { i18nOptions } from "@/i18n"
+import { getContracts } from "@/services/contractsService"
 
 const themeFamilyOptions = ["default", "claudePlus", "deSwissDesign"]
 const colorModeOptions = ["light", "dark"]
 
 function App() {
+  const [contractsState, setContractsState] = useState({
+    contracts: [],
+    error: null,
+    isLoading: true,
+  })
   const [view, setView] = useState({ name: "contracts" })
   const [themeSettings, setThemeSettings] = useState(getInitialTheme)
   const themeFamily = themeSettings.family
   const colorMode = themeSettings.mode
   const { i18n, t } = useTranslation()
+
+  useEffect(() => {
+    let ignore = false
+
+    getContracts()
+      .then((apiContracts) => {
+        if (!ignore) {
+          setContractsState({
+            contracts: apiContracts,
+            error: null,
+            isLoading: false,
+          })
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setContractsState({
+            contracts: [],
+            error,
+            isLoading: false,
+          })
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   function handleLocaleChange(nextLocale) {
     localStorage.setItem("locale", nextLocale)
@@ -113,7 +146,9 @@ function App() {
         ) : null}
         {view.name === "contracts" ? (
           <ContractsTable
-            contracts={defaultContracts}
+            contracts={contractsState.contracts}
+            error={contractsState.error}
+            isLoading={contractsState.isLoading}
             onOpenContract={(contract) => setView({ name: "contract", contract })}
             onOpenProperty={(property) => setView({ name: "property", property })}
             onOpenRentSettlement={(contract) =>

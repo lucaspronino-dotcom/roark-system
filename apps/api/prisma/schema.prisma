@@ -18,6 +18,7 @@ model Person {
   updatedAt DateTime @updatedAt
 
   tenant Tenant?
+  owner  Owner?
 
   @@map("people")
 }
@@ -30,6 +31,58 @@ model Tenant {
   updatedAt     DateTime @updatedAt
 
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  contracts Contract[]
 
   @@map("tenants")
+}
+
+model Owner {
+  id        String   @id @default(uuid()) @db.Uuid
+  personId  String   @unique @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person     Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  properties Property[]
+  contracts  Contract[]
+
+  @@map("owners")
+}
+
+model Property {
+  id        String   @id @default(uuid()) @db.Uuid
+  folder    String
+  address   String
+  ownerId   String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     Owner      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  contracts Contract[]
+
+  @@unique([folder, address])
+  @@map("properties")
+}
+
+model Contract {
+  id         String         @id @default(uuid()) @db.Uuid
+  folder     String
+  endDate    DateTime
+  status     ContractStatus
+  propertyId String         @db.Uuid
+  tenantId   String         @db.Uuid
+  ownerId    String         @db.Uuid
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owner    Owner    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@map("contracts")
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
 }
