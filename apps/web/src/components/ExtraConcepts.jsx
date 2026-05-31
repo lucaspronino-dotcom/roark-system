@@ -57,6 +57,7 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
   const [tenantEffect, setTenantEffect] = useState("none")
   const [error, setError] = useState("")
   const [selectedConcept, setSelectedConcept] = useState(null)
+  const [isNewRegularConceptOpen, setIsNewRegularConceptOpen] = useState(false)
 
   function handleConfirm() {
     const cleanDescription = description.trim()
@@ -151,7 +152,10 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
             <CardTitle>{t("extraConcepts.regular.title")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <Button variant="outline">
+            <Button
+              onClick={() => setIsNewRegularConceptOpen(true)}
+              variant="outline"
+            >
               <BookOpen />
               {t("extraConcepts.regular.add")}
             </Button>
@@ -239,16 +243,77 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
           }}
         />
       ) : null}
+
+      {isNewRegularConceptOpen ? (
+        <RegularConceptModal
+          onClose={() => setIsNewRegularConceptOpen(false)}
+          onSave={(concept) => {
+            setConcepts((currentConcepts) => [...currentConcepts, concept])
+            setIsNewRegularConceptOpen(false)
+          }}
+        />
+      ) : null}
     </div>
   )
 }
 
-function RegularConceptModal({ concept, onClose, onDelete }) {
+function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
   const { t } = useTranslation()
+  const isEditing = Boolean(concept)
+  const [conceptName, setConceptName] = useState(concept?.detail ?? "")
+  const [conceptAmount, setConceptAmount] = useState(
+    getNumericAmount(concept?.amount ?? "") || "",
+  )
+  const [tenantEffect, setTenantEffect] = useState("addToPayment")
+  const [ownerEffect, setOwnerEffect] = useState("addToOwner")
+  const [startDate, setStartDate] = useState("5/12/2023")
+  const [endDate, setEndDate] = useState("4/12/2026")
+  const [monthMode, setMonthMode] = useState("all")
+  const [selectedMonths, setSelectedMonths] = useState(months)
+  const [error, setError] = useState("")
+
+  function toggleMonth(month) {
+    setSelectedMonths((currentMonths) => {
+      const nextMonths = currentMonths.includes(month)
+        ? currentMonths.filter((currentMonth) => currentMonth !== month)
+        : [...currentMonths, month]
+
+      setMonthMode(nextMonths.length === months.length ? "all" : "custom")
+
+      return nextMonths
+    })
+  }
+
+  function selectAllMonths() {
+    setMonthMode("all")
+    setSelectedMonths(months)
+  }
+
+  function handleSave() {
+    const cleanConceptName = conceptName.trim()
+    const numericAmount = Number(conceptAmount)
+
+    if (!cleanConceptName) {
+      setError(t("extraConcepts.validation.descriptionRequired"))
+      return
+    }
+
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+      setError(t("extraConcepts.validation.amountRequired"))
+      return
+    }
+
+    onSave?.({
+      accountDescription: `junio/2026 ${cleanConceptName} -`,
+      amount: formatCurrency(numericAmount),
+      detail: cleanConceptName,
+    })
+    onClose()
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
-      <Card className="max-h-[90vh] w-full max-w-5xl overflow-auto shadow-lg">
+      <Card className="max-h-[90vh] w-full max-w-4xl overflow-auto shadow-lg">
         <CardHeader className="border-b">
           <div className="flex items-center justify-between gap-4">
             <CardTitle>{t("extraConcepts.regularModal.windowTitle")}</CardTitle>
@@ -263,79 +328,67 @@ function RegularConceptModal({ concept, onClose, onDelete }) {
             {t("extraConcepts.regular.title")}
           </h2>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(320px,0.8fr)_minmax(420px,1.2fr)]">
-            <div className="space-y-4">
-              <Field label={t("extraConcepts.regularModal.concept")}>
-                <select
-                  className="h-8 w-full border border-input bg-background px-2 text-sm"
-                  defaultValue={concept.detail}
-                >
-                  {regularConcepts.map((regularConcept) => (
-                    <option key={regularConcept.detail} value={regularConcept.detail}>
-                      {regularConcept.detail}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+          <div className="grid max-w-lg gap-4">
+            <Field label={t("extraConcepts.regularModal.concept")}>
+              <Input
+                onChange={(event) => setConceptName(event.target.value)}
+                value={conceptName}
+              />
+            </Field>
 
-              <Field label={t("extraConcepts.regularModal.amount")}>
-                <Input defaultValue={concept.amount} />
-              </Field>
-
-              <Field label={t("extraConcepts.regularModal.rentPercentage")}>
-                <Input defaultValue="0,00%" />
-              </Field>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" />
-                {t("extraConcepts.regularModal.onlyReceipt")}
-              </label>
-            </div>
-
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input defaultChecked type="checkbox" />
-                {t("extraConcepts.single.clear")}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" />
-                {t("extraConcepts.regularModal.rememberPayment")}
-              </label>
-            </div>
+            <Field label={t("extraConcepts.regularModal.amount")}>
+              <Input
+                inputMode="numeric"
+                min="0"
+                onChange={(event) => setConceptAmount(event.target.value)}
+                step="1"
+                type="number"
+                value={conceptAmount}
+              />
+            </Field>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <EffectPanel title={t("extraConcepts.tenant.title")}>
-              <RadioOption label={t("extraConcepts.effects.noEffect")} name="regular-tenant-effect" />
-              <RadioOption defaultChecked label={t("extraConcepts.effects.addToPayment")} name="regular-tenant-effect" />
-              <RadioOption label={t("extraConcepts.effects.discountPayment")} name="regular-tenant-effect" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" />
-                {t("extraConcepts.tenant.appliesPenalties")}
-              </label>
+              <RadioOption
+                checked={tenantEffect === "none"}
+                label={t("extraConcepts.effects.noEffect")}
+                name="regular-tenant-effect"
+                onChange={() => setTenantEffect("none")}
+              />
+              <RadioOption
+                checked={tenantEffect === "addToPayment"}
+                label={t("extraConcepts.effects.addToPayment")}
+                name="regular-tenant-effect"
+                onChange={() => setTenantEffect("addToPayment")}
+              />
+              <RadioOption
+                checked={tenantEffect === "discountPayment"}
+                label={t("extraConcepts.effects.discountPayment")}
+                name="regular-tenant-effect"
+                onChange={() => setTenantEffect("discountPayment")}
+              />
             </EffectPanel>
 
             <EffectPanel title={t("extraConcepts.owner.title")}>
-              <RadioOption label={t("extraConcepts.effects.noEffect")} name="regular-owner-effect" />
-              <RadioOption defaultChecked label={t("extraConcepts.effects.addToOwner")} name="regular-owner-effect" />
-              <RadioOption label={t("extraConcepts.effects.discountOwner")} name="regular-owner-effect" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" />
-                {t("extraConcepts.owner.appliesAdministration")}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input defaultChecked type="checkbox" />
-                {t("extraConcepts.owner.all")}
-              </label>
-              <Field label={t("extraConcepts.owner.owner")}>
-                <select className="h-8 w-full border border-input bg-background px-2 text-sm">
-                  <option>{t("actions.choose")}</option>
-                </select>
-              </Field>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" />
-                {t("extraConcepts.regularModal.deliverReceipt")}
-              </label>
+              <RadioOption
+                checked={ownerEffect === "none"}
+                label={t("extraConcepts.effects.noEffect")}
+                name="regular-owner-effect"
+                onChange={() => setOwnerEffect("none")}
+              />
+              <RadioOption
+                checked={ownerEffect === "addToOwner"}
+                label={t("extraConcepts.effects.addToOwner")}
+                name="regular-owner-effect"
+                onChange={() => setOwnerEffect("addToOwner")}
+              />
+              <RadioOption
+                checked={ownerEffect === "discountOwner"}
+                label={t("extraConcepts.effects.discountOwner")}
+                name="regular-owner-effect"
+                onChange={() => setOwnerEffect("discountOwner")}
+              />
             </EffectPanel>
           </div>
 
@@ -343,30 +396,41 @@ function RegularConceptModal({ concept, onClose, onDelete }) {
             <legend className="px-1 text-sm font-semibold">
               {t("extraConcepts.regularModal.applicationPeriod")}
             </legend>
-            <div className="grid gap-4">
+            <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-[180px_180px]">
                 <Field label={t("extraConcepts.regularModal.startDate")}>
-                  <Input defaultValue="1/3/2026" />
+                  <Input
+                    onChange={(event) => setStartDate(event.target.value)}
+                    value={startDate}
+                  />
                 </Field>
                 <Field label={t("extraConcepts.regularModal.endDate")}>
-                  <Input defaultValue="29/2/2028" />
+                  <Input
+                    onChange={(event) => setEndDate(event.target.value)}
+                    value={endDate}
+                  />
                 </Field>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[160px_1fr]">
-                <div className="space-y-2">
-                  <RadioOption label={t("extraConcepts.owner.all")} name="month-mode" />
-                  <RadioOption label={t("extraConcepts.regularModal.evenMonths")} name="month-mode" />
-                  <RadioOption label={t("extraConcepts.regularModal.oddMonths")} name="month-mode" />
-                </div>
-                <div className="grid grid-cols-6 gap-3 md:grid-cols-12">
+              <div className="flex flex-wrap items-start gap-5">
+                <RadioOption
+                  checked={monthMode === "all"}
+                  label={t("extraConcepts.owner.all")}
+                  name="month-mode"
+                  onChange={selectAllMonths}
+                />
+                <div className="grid flex-1 grid-cols-6 gap-4 md:grid-cols-12">
                   {months.map((month) => (
                     <label
                       className="flex flex-col items-center gap-2 text-xs"
                       key={month}
                     >
                       <span>{month}</span>
-                      <input defaultChecked type="checkbox" />
+                      <input
+                        checked={selectedMonths.includes(month)}
+                        onChange={() => toggleMonth(month)}
+                        type="checkbox"
+                      />
                     </label>
                   ))}
                 </div>
@@ -374,14 +438,20 @@ function RegularConceptModal({ concept, onClose, onDelete }) {
             </div>
           </fieldset>
 
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
           <div className="flex justify-end gap-2 border-t pt-4">
-            <Button onClick={onDelete} variant="outline">
-              <Trash2 />
-              {t("actions.delete")}
-            </Button>
-            <Button onClick={onClose}>
+            {isEditing ? (
+              <Button onClick={onDelete} variant="outline">
+                <Trash2 />
+                {t("actions.delete")}
+              </Button>
+            ) : null}
+            <Button onClick={isEditing ? onClose : handleSave}>
               <Save />
-              {t("extraConcepts.regularModal.saveAndExit")}
+              {isEditing
+                ? t("extraConcepts.regularModal.saveAndExit")
+                : t("extraConcepts.regularModal.loadConcept")}
             </Button>
           </div>
         </CardContent>
@@ -409,18 +479,38 @@ function EffectPanel({ children, title }) {
 }
 
 function RadioOption({ checked, defaultChecked = false, label, name, onChange }) {
+  const controlProps =
+    checked === undefined ? { defaultChecked } : { checked, onChange }
+
   return (
     <label className="flex items-center gap-2 text-sm">
       <input
-        checked={checked}
-        defaultChecked={defaultChecked}
         name={name}
-        onChange={onChange}
         type="radio"
+        {...controlProps}
       />
       {label}
     </label>
   )
+}
+
+function getNumericAmount(value) {
+  const normalizedValue = String(value)
+    .replaceAll("$", "")
+    .replaceAll(" ", "")
+    .replaceAll(".", "")
+    .replace(",", ".")
+
+  return Number(normalizedValue) || 0
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-AR", {
+    currency: "ARS",
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    style: "currency",
+  }).format(Number(value || 0))
 }
 
 export { ExtraConcepts }

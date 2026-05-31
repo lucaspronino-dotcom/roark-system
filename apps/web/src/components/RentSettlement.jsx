@@ -64,6 +64,8 @@ function RentSettlement({ contract, onBack }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("account")
   const [items, setItems] = useState(settlementItems)
+  const [noteText, setNoteText] = useState("")
+  const [notes, setNotes] = useState([])
   const [paidAmount, setPaidAmount] = useState(null)
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
   const total = items.reduce(
@@ -102,6 +104,17 @@ function RentSettlement({ contract, onBack }) {
     setItems((currentItems) =>
       currentItems.filter((item) => item.description !== description),
     )
+  }
+
+  function leaveNote() {
+    const nextNote = noteText.trim()
+
+    if (!nextNote) {
+      return
+    }
+
+    setNotes((currentNotes) => [nextNote, ...currentNotes])
+    setNoteText("")
   }
 
   return (
@@ -297,8 +310,35 @@ function RentSettlement({ contract, onBack }) {
 
           {activeTab === "notes" ? (
             <Card>
-              <CardContent className="pt-4 text-muted-foreground">
-                {t("rentSettlement.tabs.notes")}
+              <CardContent className="space-y-4 pt-4">
+                {notes.length > 0 ? (
+                  <div className="space-y-2">
+                    {notes.map((note, index) => (
+                      <div
+                        className="border bg-muted/30 px-3 py-2 text-sm"
+                        key={`${note}-${index}`}
+                      >
+                        {note}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  <Label htmlFor="rent-settlement-note">
+                    {t("rentSettlement.notes.label")}
+                  </Label>
+                  <textarea
+                    className="min-h-32 w-full border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+                    id="rent-settlement-note"
+                    onChange={(event) => setNoteText(event.target.value)}
+                    value={noteText}
+                  />
+                </div>
+
+                <Button onClick={leaveNote} type="button">
+                  {t("rentSettlement.notes.leave")}
+                </Button>
               </CardContent>
             </Card>
           ) : null}

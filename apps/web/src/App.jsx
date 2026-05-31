@@ -14,10 +14,7 @@ const themeFamilyOptions = ["default", "claudePlus", "deSwissDesign"]
 const colorModeOptions = ["light", "dark"]
 
 function App() {
-  const [view, setView] = useState({
-    name: "property",
-    property: defaultContracts[1],
-  })
+  const [view, setView] = useState({ name: "contracts" })
   const [themeSettings, setThemeSettings] = useState(getInitialTheme)
   const themeFamily = themeSettings.family
   const colorMode = themeSettings.mode

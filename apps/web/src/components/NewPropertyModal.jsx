@@ -65,7 +65,7 @@ function NewPropertyModal({ onClose }) {
 
             <section className="space-y-5">
               <SectionTitle>{t("propertyDetail.sections.owners")}</SectionTitle>
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="grid gap-3 md:grid-cols-[max-content_auto_minmax(220px,340px)] md:items-end">
                   <Button
                     onClick={() => setIsNewOwnerOpen(true)}
@@ -81,11 +81,17 @@ function NewPropertyModal({ onClose }) {
                   <SelectField />
                 </div>
 
-                <div className="grid gap-3 text-sm font-semibold md:grid-cols-[80px_minmax(220px,1fr)_140px_150px]">
-                  <span>{t("propertyDetail.fields.primaryOwner")}</span>
-                  <span>{t("propertyDetail.fields.owner")}</span>
-                  <span>{t("propertyDetail.fields.participation")}</span>
-                  <span>{t("propertyDetail.fields.administration")}</span>
+                <div className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-[minmax(260px,1fr)_140px_150px]">
+                    <Field label={t("propertyDetail.fields.owner")} />
+                    <Field label={t("propertyDetail.fields.participation")} />
+                    <Field label={t("propertyDetail.fields.administration")} />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>{t("newOwner.fields.transferAliasOrCbu")}</Label>
+                    <textarea className="min-h-32 w-full border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50" />
+                  </div>
                 </div>
               </div>
             </section>

@@ -2,6 +2,8 @@ import {
   BookOpen,
   CalendarDays,
   CircleHelp,
+  ClipboardList,
+  Coins,
   Folder,
   Home,
   Search,
@@ -12,7 +14,9 @@ import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { IndependentReceiptModal } from "@/components/IndependentReceiptModal"
 import { Input } from "@/components/ui/input"
+import { NewPropertyModal } from "@/components/NewPropertyModal"
 import { OwnerAccountModal } from "@/components/OwnerAccountModal"
 import { PaymentDetailsModal } from "@/components/PaymentDetailsModal"
 import {
@@ -32,12 +36,41 @@ function ContractsTable({
   onOpenRentSettlement,
 }) {
   const { t } = useTranslation()
+  const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
+  const [isFinanceOpen, setIsFinanceOpen] = useState(false)
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedPaymentDetails, setSelectedPaymentDetails] = useState(null)
 
   return (
     <section className="w-full space-y-4">
-      <div className="flex justify-center">
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_minmax(260px,1fr)] lg:items-end">
+        <div className="flex flex-wrap gap-2">
+          <MainActionButton
+            icon={ClipboardList}
+            onClick={() =>
+              onOpenContract?.({
+                address: "",
+                end: "",
+                folder: "",
+                owner: "",
+                status: "Alquiler",
+                tenant: "",
+              })
+            }
+          >
+            {t("mainActions.newContract")}
+          </MainActionButton>
+          <MainActionButton
+            icon={Home}
+            onClick={() => setIsNewPropertyOpen(true)}
+          >
+            {t("mainActions.newProperty")}
+          </MainActionButton>
+          <MainActionButton icon={Coins} onClick={() => setIsFinanceOpen(true)}>
+            {t("mainActions.finance")}
+          </MainActionButton>
+        </div>
+        <div className="flex justify-center lg:col-start-2">
         <div className="relative w-full max-w-sm">
           <Input
             className="pr-9"
@@ -45,6 +78,7 @@ function ContractsTable({
             placeholder={t("table.search")}
           />
           <Search className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
         </div>
       </div>
 
@@ -96,7 +130,27 @@ function ContractsTable({
           personName={selectedPaymentDetails}
         />
       ) : null}
+      {isNewPropertyOpen ? (
+        <NewPropertyModal onClose={() => setIsNewPropertyOpen(false)} />
+      ) : null}
+      {isFinanceOpen ? (
+        <IndependentReceiptModal onClose={() => setIsFinanceOpen(false)} />
+      ) : null}
     </section>
+  )
+}
+
+function MainActionButton({ children, icon: Icon, onClick }) {
+  return (
+    <Button
+      className="h-20 w-24 flex-col gap-1 whitespace-normal px-2 text-center text-xs"
+      onClick={onClick}
+      type="button"
+      variant="outline"
+    >
+      <Icon className="size-6" />
+      <span className="leading-tight">{children}</span>
+    </Button>
   )
 }
 

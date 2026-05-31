@@ -16,22 +16,14 @@ import { Label } from "@/components/ui/label"
 function NewTenantModal({ onClose }) {
   const { t } = useTranslation()
   const [tenantForms, setTenantForms] = useState([1])
-  const [guarantorForms, setGuarantorForms] = useState([1])
 
   function addTenantForm() {
     setTenantForms((currentForms) => [...currentForms, currentForms.length + 1])
   }
 
-  function addGuarantorForm() {
-    setGuarantorForms((currentForms) => [
-      ...currentForms,
-      currentForms.length + 1,
-    ])
-  }
-
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
-      <Card className="flex max-h-[88vh] w-full max-w-5xl flex-col">
+      <Card className="flex max-h-[88vh] w-full max-w-2xl flex-col">
         <CardHeader className="border-b">
           <CardTitle className="text-base font-medium">
             {t("newTenant.title")}
@@ -55,18 +47,12 @@ function NewTenantModal({ onClose }) {
             </Button>
           </div>
 
-          <div className="grid flex-1 gap-12 overflow-y-auto p-6 lg:grid-cols-2">
+          <div className="flex-1 overflow-y-auto p-6">
             <PersonFormsColumn
               addLabel={t("newTenant.actions.addAnother")}
               forms={tenantForms}
               onAdd={addTenantForm}
               title={t("newTenant.sections.personalData")}
-            />
-            <PersonFormsColumn
-              addLabel={t("newTenant.actions.addAnother")}
-              forms={guarantorForms}
-              onAdd={addGuarantorForm}
-              title={t("newTenant.sections.guarantorData")}
             />
           </div>
 

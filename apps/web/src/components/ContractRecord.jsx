@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Download,
   Home,
+  Plus,
   RotateCcw,
   Save,
   Trash2,
@@ -141,7 +142,7 @@ function ContractRecord({ contract, onBack }) {
       ) : null}
 
       {activeTab === "mainData" ? (
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader className="border-b bg-muted/20">
           <CardTitle className="text-2xl font-semibold text-primary">
             {t("contractRecord.sections.mainData")}
@@ -232,6 +233,7 @@ function ContractRecord({ contract, onBack }) {
                   <DatePickerField
                     label={t("contractRecord.fields.date")}
                     onChange={setTerminationDate}
+                    placement="top"
                     value={terminationDate}
                   />
                   <label className="flex items-center gap-2 pb-2 text-sm font-medium">
@@ -305,16 +307,37 @@ function ContractRecord({ contract, onBack }) {
 
 function TenantAndGuarantorsPanel({ contract, onBack }) {
   const { t } = useTranslation()
+  const [tenantForms, setTenantForms] = useState([1])
+  const [guarantorForms, setGuarantorForms] = useState([1])
+
+  function addTenantForm() {
+    setTenantForms((currentForms) => [...currentForms, currentForms.length + 1])
+  }
+
+  function addGuarantorForm() {
+    setGuarantorForms((currentForms) => [
+      ...currentForms,
+      currentForms.length + 1,
+    ])
+  }
 
   return (
     <Card>
       <CardContent className="space-y-6 pt-6">
         <div className="grid gap-6 lg:grid-cols-2">
-          <PersonDataSection
+          <PersonDataColumn
+            addLabel={t("newTenant.actions.addAnother")}
             defaultName={contract.tenant}
+            forms={tenantForms}
+            onAdd={addTenantForm}
             title={t("contractRecord.sections.tenant")}
           />
-          <PersonDataSection title={t("contractRecord.sections.guarantors")} />
+          <PersonDataColumn
+            addLabel={t("newTenant.actions.addAnother")}
+            forms={guarantorForms}
+            onAdd={addGuarantorForm}
+            title={t("contractRecord.sections.guarantors")}
+          />
         </div>
         <div className="flex justify-end border-t pt-4">
           <Button onClick={onBack} variant="outline">
@@ -327,12 +350,32 @@ function TenantAndGuarantorsPanel({ contract, onBack }) {
   )
 }
 
-function PersonDataSection({ defaultName = "", title }) {
+function PersonDataColumn({ addLabel, defaultName = "", forms, onAdd, title }) {
+  return (
+    <section className="space-y-6">
+      {forms.map((formNumber) => (
+        <PersonDataSection
+          defaultName={formNumber === 1 ? defaultName : ""}
+          formNumber={formNumber}
+          key={formNumber}
+          title={title}
+        />
+      ))}
+      <Button onClick={onAdd} variant="outline">
+        <Plus />
+        {addLabel}
+      </Button>
+    </section>
+  )
+}
+
+function PersonDataSection({ defaultName = "", formNumber = 1, title }) {
   const { t } = useTranslation()
+  const renderedTitle = formNumber > 1 ? `${title} ${formNumber}` : title
 
   return (
     <section className="space-y-4">
-      <PanelTitle>{title}</PanelTitle>
+      <PanelTitle>{renderedTitle}</PanelTitle>
       <div className="space-y-3">
         <Field defaultValue={defaultName} label={t("newTenant.fields.name")} />
         <Field label={t("newTenant.fields.lastName")} />
@@ -369,13 +412,16 @@ function ContractOwnersPanel({ contract, onBack }) {
 
           <section className="space-y-4">
             <PanelTitle>{t("contractOwners.sections.owners")}</PanelTitle>
-            <div className="grid gap-4 md:grid-cols-[minmax(260px,1fr)_120px_130px]">
-              <Field
-                defaultValue={contract.owner}
-                label={t("propertyDetail.fields.owner")}
-              />
-              <Field label={t("propertyDetail.fields.participation")} />
-              <Field label={t("propertyDetail.fields.administration")} />
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-[minmax(260px,1fr)_120px_130px]">
+                <Field
+                  defaultValue={contract.owner}
+                  label={t("propertyDetail.fields.owner")}
+                />
+                <Field label={t("propertyDetail.fields.participation")} />
+                <Field label={t("propertyDetail.fields.administration")} />
+              </div>
+              <Field label={t("contractOwners.fields.bankAccountCbu")} />
             </div>
           </section>
         </div>
@@ -429,7 +475,7 @@ function EntityPicker({ icon: Icon, label, name, onNew, onViewData, value }) {
 
 function Section({ children, title }) {
   return (
-    <Card size="sm">
+    <Card className="overflow-visible" size="sm">
       <CardHeader>
         <CardTitle className="border-b border-primary/40 pb-1 text-xl font-semibold text-primary">
           {title}
@@ -469,7 +515,7 @@ function Field({
   )
 }
 
-function DatePickerField({ label, onChange, value }) {
+function DatePickerField({ label, onChange, placement = "bottom", value }) {
   const { t } = useTranslation()
   const selectedDate = parseDateValue(value) ?? new Date()
   const [isOpen, setIsOpen] = useState(false)
@@ -512,7 +558,14 @@ function DatePickerField({ label, onChange, value }) {
       </div>
 
       {isOpen ? (
-        <div className="absolute right-0 z-30 w-72 border bg-popover p-3 text-popover-foreground shadow-lg">
+        <div
+          className={[
+            "absolute right-0 z-50 w-72 border bg-popover p-3 text-popover-foreground shadow-lg",
+            placement === "top"
+              ? "bottom-0 left-full right-auto ml-3"
+              : "top-full mt-2",
+          ].join(" ")}
+        >
           <div className="mb-3 flex items-center justify-between">
             <Button
               aria-label={t("contractRecord.calendar.previousMonth")}

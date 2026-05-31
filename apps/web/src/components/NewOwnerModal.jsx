@@ -53,6 +53,7 @@ function NewOwnerModal({ onClose }) {
                 <Field label={t("newOwner.fields.city")} />
                 <Field label={t("newOwner.fields.phone")} short />
                 <Field label={t("newOwner.fields.email")} />
+                <Field label={t("newOwner.fields.transferAliasOrCbu")} />
               </div>
             </section>
           </div>

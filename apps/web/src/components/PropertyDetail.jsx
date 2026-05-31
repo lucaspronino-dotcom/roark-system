@@ -193,12 +193,9 @@ function OwnerRecordModal({ onClose }) {
             <Field label={t("propertyDetail.ownerModal.fields.lastName")} />
             <Field label={t("propertyDetail.ownerModal.fields.address")} />
             <Field label={t("propertyDetail.ownerModal.fields.city")} />
-            <div className="pt-10">
-              <Field label={t("propertyDetail.ownerModal.fields.phone")} />
-            </div>
-            <div className="pt-8">
-              <Field label={t("propertyDetail.ownerModal.fields.email")} />
-            </div>
+            <Field label={t("propertyDetail.ownerModal.fields.phone")} />
+            <Field label={t("propertyDetail.ownerModal.fields.email")} />
+            <Field label={t("propertyDetail.ownerModal.fields.transferAliasOrCbu")} />
           </div>
 
           <div className="mt-8 flex justify-end gap-2 border-t pt-4">
