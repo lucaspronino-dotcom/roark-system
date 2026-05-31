@@ -7,7 +7,7 @@ import prettier from "eslint-config-prettier"
 import { defineConfig, globalIgnores } from "eslint/config"
 
 export default defineConfig([
-  globalIgnores(["dist", "apps/web/dist"]),
+  globalIgnores(["**/dist/**"]),
   {
     files: ["**/*.{js,jsx}"],
     extends: [
@@ -34,8 +34,8 @@ export default defineConfig([
     },
   },
   {
-    files: ["apps/web/src/components/**/*.{js,jsx}"],
-    ignores: ["apps/web/src/components/ui/**/*"],
+    files: ["apps/web/src/components/**/*.{js,jsx}", "src/components/**/*.{js,jsx}"],
+    ignores: ["apps/web/src/components/ui/**/*", "src/components/ui/**/*"],
     plugins: {
       "check-file": checkFile,
     },
@@ -49,7 +49,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["apps/web/src/components/ui/**/*.{js,jsx}"],
+    files: ["apps/web/src/components/ui/**/*.{js,jsx}", "src/components/ui/**/*.{js,jsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
     },
