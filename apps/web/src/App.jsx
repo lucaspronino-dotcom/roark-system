@@ -28,8 +28,12 @@ function App() {
   useEffect(() => {
     let ignore = false
 
-    getContracts()
-      .then((apiContracts) => {
+    loadContracts()
+
+    async function loadContracts() {
+      try {
+        const apiContracts = await getContracts()
+
         if (!ignore) {
           setContractsState({
             contracts: apiContracts,
@@ -37,8 +41,7 @@ function App() {
             isLoading: false,
           })
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!ignore) {
           setContractsState({
             contracts: [],
@@ -46,12 +49,36 @@ function App() {
             isLoading: false,
           })
         }
-      })
+      }
+    }
 
     return () => {
       ignore = true
     }
   }, [])
+
+  async function refreshContracts() {
+    setContractsState((currentState) => ({
+      ...currentState,
+      isLoading: true,
+    }))
+
+    try {
+      const apiContracts = await getContracts()
+
+      setContractsState({
+        contracts: apiContracts,
+        error: null,
+        isLoading: false,
+      })
+    } catch (error) {
+      setContractsState({
+        contracts: [],
+        error,
+        isLoading: false,
+      })
+    }
+  }
 
   function handleLocaleChange(nextLocale) {
     localStorage.setItem("locale", nextLocale)
@@ -130,12 +157,14 @@ function App() {
           <ContractRecord
             contract={view.contract}
             onBack={() => setView({ name: "contracts" })}
+            onSaved={refreshContracts}
           />
         ) : null}
         {view.name === "property" ? (
           <PropertyDetail
             onBack={() => setView({ name: "contracts" })}
             property={view.property}
+            onSaved={refreshContracts}
           />
         ) : null}
         {view.name === "rentSettlement" ? (
@@ -149,6 +178,7 @@ function App() {
             contracts={contractsState.contracts}
             error={contractsState.error}
             isLoading={contractsState.isLoading}
+            onContractsChanged={refreshContracts}
             onOpenContract={(contract) => setView({ name: "contract", contract })}
             onOpenProperty={(property) => setView({ name: "property", property })}
             onOpenRentSettlement={(contract) =>

@@ -1,4 +1,4 @@
-import { Plus, Save, Trash2, X } from "lucide-react"
+import { Save, X } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -12,13 +12,45 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createTenant } from "@/services/tenantsService"
 
-function NewTenantModal({ onClose }) {
+const initialForm = {
+  firstName: "",
+  lastName: "",
+  dni: "",
+  rentalAddress: "",
+  phone: "",
+  email: "",
+}
+
+function NewTenantModal({ onClose, onSaved }) {
   const { t } = useTranslation()
-  const [tenantForms, setTenantForms] = useState([1])
+  const [form, setForm] = useState(initialForm)
+  const [error, setError] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
 
-  function addTenantForm() {
-    setTenantForms((currentForms) => [...currentForms, currentForms.length + 1])
+  function updateField(name, value) {
+    setForm((currentForm) => ({ ...currentForm, [name]: value }))
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setError("")
+    setIsSaving(true)
+
+    try {
+      const tenant = await createTenant({
+        ...form,
+        email: form.email || undefined,
+      })
+
+      onSaved?.(tenant)
+      onClose()
+    } catch (apiError) {
+      setError(apiError.message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -33,6 +65,7 @@ function NewTenantModal({ onClose }) {
               aria-label={t("actions.close")}
               onClick={onClose}
               size="icon-sm"
+              type="button"
               variant="ghost"
             >
               <X />
@@ -41,81 +74,111 @@ function NewTenantModal({ onClose }) {
         </CardHeader>
 
         <CardContent className="flex min-h-0 flex-1 flex-col pt-4">
-          <div className="border-b">
-            <Button size="sm" variant="secondary">
-              {t("propertyDetail.tabs.mainData")}
-            </Button>
-          </div>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+            <div className="border-b">
+              <Button size="sm" type="button" variant="secondary">
+                {t("propertyDetail.tabs.mainData")}
+              </Button>
+            </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <PersonFormsColumn
-              addLabel={t("newTenant.actions.addAnother")}
-              forms={tenantForms}
-              onAdd={addTenantForm}
-              title={t("newTenant.sections.personalData")}
-            />
-          </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <section className="mx-auto max-w-md space-y-5">
+                <h2 className="border-b border-primary/40 pb-1 text-2xl font-semibold text-primary">
+                  {t("newTenant.sections.personalData")}
+                </h2>
+                <div className="space-y-3">
+                  <Field
+                    autoFocus
+                    label={t("newTenant.fields.name")}
+                    name="firstName"
+                    onChange={updateField}
+                    required
+                    value={form.firstName}
+                  />
+                  <Field
+                    label={t("newTenant.fields.lastName")}
+                    name="lastName"
+                    onChange={updateField}
+                    required
+                    value={form.lastName}
+                  />
+                  <Field
+                    label={t("newTenant.fields.dni")}
+                    name="dni"
+                    onChange={updateField}
+                    required
+                    value={form.dni}
+                  />
+                  <Field
+                    label={t("newTenant.fields.address")}
+                    name="rentalAddress"
+                    onChange={updateField}
+                    required
+                    value={form.rentalAddress}
+                  />
+                  <Field
+                    label={t("newTenant.fields.phone")}
+                    name="phone"
+                    onChange={updateField}
+                    required
+                    short
+                    value={form.phone}
+                  />
+                  <Field
+                    label={t("newTenant.fields.email")}
+                    name="email"
+                    onChange={updateField}
+                    type="email"
+                    value={form.email}
+                  />
+                </div>
+              </section>
+            </div>
 
-          <div className="mt-auto flex justify-end gap-3 border-t bg-muted/40 p-3">
-            <Button onClick={onClose} variant="outline">
-              <Trash2 />
-              {t("actions.delete")}
-            </Button>
-            <Button onClick={onClose}>
-              <Save />
-              {t("actions.saveAndExit")}
-            </Button>
-          </div>
+            {error ? (
+              <div className="border-t px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="mt-auto flex justify-end gap-3 border-t bg-muted/40 p-3">
+              <Button onClick={onClose} type="button" variant="outline">
+                {t("actions.cancel")}
+              </Button>
+              <Button disabled={isSaving} type="submit">
+                <Save />
+                {t("actions.saveAndExit")}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
     </div>
   )
 }
 
-function PersonFormsColumn({ addLabel, forms, onAdd, title }) {
-  return (
-    <section className="space-y-6">
-      {forms.map((formNumber) => (
-        <PersonForm
-          formNumber={formNumber}
-          key={formNumber}
-          title={title}
-        />
-      ))}
-      <Button onClick={onAdd} variant="outline">
-        <Plus />
-        {addLabel}
-      </Button>
-    </section>
-  )
-}
-
-function PersonForm({ formNumber, title }) {
-  const { t } = useTranslation()
-  const renderedTitle = formNumber > 1 ? `${title} ${formNumber}` : title
-
-  return (
-    <div className="space-y-5">
-      <h2 className="border-b border-primary/40 pb-1 text-2xl font-semibold text-primary">
-        {renderedTitle}
-      </h2>
-      <div className="mx-auto max-w-md space-y-3">
-        <Field autoFocus={formNumber === 1} label={t("newTenant.fields.name")} />
-        <Field label={t("newTenant.fields.lastName")} />
-        <Field label={t("newTenant.fields.dni")} />
-        <Field label={t("newTenant.fields.address")} />
-        <Field label={t("newTenant.fields.phone")} short />
-        <Field label={t("newTenant.fields.email")} />
-      </div>
-    </div>
-  )
-}
-
-function Field({ autoFocus = false, label, short = false }) {
+function Field({
+  autoFocus = false,
+  label,
+  name,
+  onChange,
+  required = false,
+  short = false,
+  type = "text",
+  value,
+}) {
   return (
     <div className={short ? "max-w-xs space-y-1" : "space-y-1"}>
-      <Label>{label}</Label>
-      <Input autoFocus={autoFocus} />
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        autoFocus={autoFocus}
+        id={name}
+        name={name}
+        onChange={(event) => onChange(name, event.target.value)}
+        required={required}
+        type={type}
+        value={value}
+      />
     </div>
   )
 }

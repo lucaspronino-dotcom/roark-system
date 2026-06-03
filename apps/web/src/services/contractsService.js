@@ -1,13 +1,19 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000"
+import { get, patch, post, remove } from "@/services/apiClient"
 
-async function getContracts() {
-  const response = await fetch(`${API_BASE_URL}/contracts`)
-
-  if (!response.ok) {
-    throw new Error("Could not fetch contracts")
-  }
-
-  return response.json()
+function getContracts() {
+  return get("/contracts")
 }
 
-export { getContracts }
+function createContract(contract) {
+  return post("/contracts", contract)
+}
+
+function updateContract(id, contract) {
+  return patch(`/contracts/${id}`, contract)
+}
+
+function deleteContract(id) {
+  return remove(`/contracts/${id}`)
+}
+
+export { createContract, deleteContract, getContracts, updateContract }

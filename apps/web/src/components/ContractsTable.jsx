@@ -27,12 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { defaultContracts } from "@/data/contracts"
 
 function ContractsTable({
-  contracts = defaultContracts,
+  contracts = [],
   error,
   isLoading = false,
+  onContractsChanged,
   onOpenContract,
   onOpenProperty,
   onOpenRentSettlement,
@@ -40,8 +40,15 @@ function ContractsTable({
   const { t } = useTranslation()
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isFinanceOpen, setIsFinanceOpen] = useState(false)
+  const [search, setSearch] = useState("")
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedPaymentDetails, setSelectedPaymentDetails] = useState(null)
+  const visibleContracts = contracts.filter((contract) =>
+    [contract.folder, contract.end, contract.address, contract.status, contract.tenant, contract.owner]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  )
 
   return (
     <section className="w-full space-y-4">
@@ -77,7 +84,9 @@ function ContractsTable({
           <Input
             className="pr-9"
             aria-label={t("table.search")}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder={t("table.search")}
+            value={search}
           />
           <Search className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
         </div>
@@ -119,14 +128,14 @@ function ContractsTable({
                 </TableCell>
               </TableRow>
             ) : null}
-            {!isLoading && !error && contracts.length === 0 ? (
+            {!isLoading && !error && visibleContracts.length === 0 ? (
               <TableRow>
                 <TableCell className="text-muted-foreground" colSpan={6}>
                   {t("table.empty")}
                 </TableCell>
               </TableRow>
             ) : null}
-            {contracts.map((contract, index) => (
+            {visibleContracts.map((contract, index) => (
               <ContractRow
                 contract={contract}
                 key={`${contract.folder}-${contract.end}-${index}`}
@@ -154,7 +163,10 @@ function ContractsTable({
         />
       ) : null}
       {isNewPropertyOpen ? (
-        <NewPropertyModal onClose={() => setIsNewPropertyOpen(false)} />
+        <NewPropertyModal
+          onClose={() => setIsNewPropertyOpen(false)}
+          onSaved={onContractsChanged}
+        />
       ) : null}
       {isFinanceOpen ? (
         <IndependentReceiptModal onClose={() => setIsFinanceOpen(false)} />

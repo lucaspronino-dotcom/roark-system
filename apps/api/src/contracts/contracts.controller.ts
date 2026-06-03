@@ -1,6 +1,8 @@
-import { Controller, Get, Param } from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common"
 
 import { ContractsService } from "./contracts.service"
+import { CreateContractDto } from "./dto/create-contract.dto"
+import { UpdateContractDto } from "./dto/update-contract.dto"
 
 @Controller("contracts")
 export class ContractsController {
@@ -14,5 +16,23 @@ export class ContractsController {
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.contractsService.findOne(id)
+  }
+
+  @Post()
+  create(@Body() createContractDto: CreateContractDto) {
+    return this.contractsService.create(createContractDto)
+  }
+
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body() updateContractDto: UpdateContractDto,
+  ) {
+    return this.contractsService.update(id, updateContractDto)
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.contractsService.remove(id)
   }
 }

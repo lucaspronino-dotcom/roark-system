@@ -150,9 +150,16 @@ async function main() {
       where: {
         personId: ownerPerson.id,
       },
-      update: {},
+      update: {
+        address: "Belgrano 1200",
+        city: "Olavarria",
+        transferAliasOrCbu: `alias.${contract.ownerDni}`,
+      },
       create: {
+        address: "Belgrano 1200",
+        city: "Olavarria",
         personId: ownerPerson.id,
+        transferAliasOrCbu: `alias.${contract.ownerDni}`,
       },
     })
 
@@ -164,12 +171,39 @@ async function main() {
         },
       },
       update: {
-        ownerId: owner.id,
+        city: "Olavarria",
+        status: "En alquiler 24M",
+        type: "Vivienda",
       },
       create: {
         folder: contract.folder,
         address: contract.rentalAddress,
+        city: "Olavarria",
+        status: "En alquiler 24M",
+        type: "Vivienda",
+      },
+    })
+
+    await prisma.propertyOwner.upsert({
+      where: {
+        propertyId_ownerId: {
+          ownerId: owner.id,
+          propertyId: property.id,
+        },
+      },
+      update: {
+        administration: 0,
+        commission: 0,
+        isPrimary: true,
+        participation: 100,
+      },
+      create: {
+        administration: 0,
+        commission: 0,
+        isPrimary: true,
         ownerId: owner.id,
+        participation: 100,
+        propertyId: property.id,
       },
     })
 
@@ -186,6 +220,7 @@ async function main() {
       folder: contract.folder,
       ownerId: owner.id,
       propertyId: property.id,
+      startDate: parseDate("1/1/2026"),
       status: contract.status,
       tenantId: tenant.id,
     }

@@ -37,14 +37,17 @@ model Tenant {
 }
 
 model Owner {
-  id        String   @id @default(uuid()) @db.Uuid
-  personId  String   @unique @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(uuid()) @db.Uuid
+  personId           String   @unique @db.Uuid
+  address            String
+  city               String
+  transferAliasOrCbu String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  person     Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
-  properties Property[]
-  contracts  Contract[]
+  person          Person          @relation(fields: [personId], references: [id], onDelete: Cascade)
+  propertyOwners  PropertyOwner[]
+  contracts       Contract[]
 
   @@map("owners")
 }
@@ -53,20 +56,41 @@ model Property {
   id        String   @id @default(uuid()) @db.Uuid
   folder    String
   address   String
-  ownerId   String   @db.Uuid
+  type      String
+  status    String
+  city      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner     Owner      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owners    PropertyOwner[]
   contracts Contract[]
 
   @@unique([folder, address])
   @@map("properties")
 }
 
+model PropertyOwner {
+  id          String   @id @default(uuid()) @db.Uuid
+  propertyId  String   @db.Uuid
+  ownerId     String   @db.Uuid
+  isPrimary   Boolean  @default(false)
+  participation Float  @default(100)
+  administration Float @default(0)
+  commission   Float   @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  owner    Owner    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@unique([propertyId, ownerId])
+  @@map("property_owners")
+}
+
 model Contract {
   id         String         @id @default(uuid()) @db.Uuid
   folder     String
+  startDate  DateTime
   endDate    DateTime
   status     ContractStatus
   propertyId String         @db.Uuid

@@ -9,7 +9,7 @@ import {
   Trash2,
   User,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,13 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  createContract,
+  deleteContract,
+  updateContract,
+} from "@/services/contractsService"
+import { getProperties } from "@/services/propertiesService"
+import { getTenants } from "@/services/tenantsService"
 
 const tabKeys = [
   "contractRecord.tabs.mainData",
@@ -40,16 +47,84 @@ const periodKeys = [
   "contractRecord.periods.sixth",
 ]
 
-function ContractRecord({ contract, onBack }) {
+function ContractRecord({ contract, onBack, onSaved }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("mainData")
-  const [createdAt, setCreatedAt] = useState("1/1/2026")
-  const [endDate, setEndDate] = useState(contract.end)
+  const [form, setForm] = useState(() => ({
+    folder: contract.folder ?? "",
+    startDate: contract.startDate ?? "1/1/2026",
+    endDate: contract.end ?? "",
+    status: contract.status === "Vencido" ? "EXPIRED" : "ACTIVE",
+    propertyId: contract.propertyId ?? "",
+    tenantId: contract.tenantId ?? "",
+    ownerId: contract.ownerId ?? "",
+  }))
+  const [properties, setProperties] = useState([])
+  const [tenants, setTenants] = useState([])
   const [terminationDate, setTerminationDate] = useState("")
   const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isNewTenantOpen, setIsNewTenantOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const selectedProperty = properties.find((property) => property.id === form.propertyId)
+  const selectedTenant = tenants.find((tenant) => tenant.id === form.tenantId)
+  const propertyDisplayValue = selectedProperty?.address ?? contract.address ?? ""
+  const tenantDisplayValue = selectedTenant
+    ? formatPersonName(selectedTenant.person)
+    : contract.tenant ?? ""
+
+  useEffect(() => {
+    let ignore = false
+
+    loadOptions()
+
+    async function loadOptions() {
+      try {
+        const [apiProperties, apiTenants] = await Promise.all([
+          getProperties(),
+          getTenants(),
+        ])
+
+        if (!ignore) {
+          setProperties(apiProperties)
+          setTenants(apiTenants)
+        }
+      } catch (apiError) {
+        if (!ignore) {
+          setError(apiError.message)
+        }
+      }
+    }
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  function updateField(name, value) {
+    setForm((currentForm) => ({ ...currentForm, [name]: value }))
+  }
+
+  function selectProperty(propertyId) {
+    const nextProperty = properties.find((property) => property.id === propertyId)
+    const nextOwnerId =
+      nextProperty?.owners.find((propertyOwner) => propertyOwner.isPrimary)?.ownerId ??
+      nextProperty?.owners[0]?.ownerId ??
+      form.ownerId
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      propertyId,
+      ownerId: nextOwnerId,
+      folder: nextProperty?.folder ?? currentForm.folder,
+    }))
+  }
+
+  function selectTenant(tenantId) {
+    setForm((currentForm) => ({ ...currentForm, tenantId }))
+  }
 
   function handleDelete() {
     if (!pendingDelete) {
@@ -58,13 +133,25 @@ function ContractRecord({ contract, onBack }) {
       return
     }
 
-    setMessage(t("contractRecord.messages.deleted"))
-    setPendingDelete(false)
+    if (!contract.id) {
+      onBack()
+      return
+    }
+
+    deleteContract(contract.id)
+      .then(() => {
+        setMessage(t("contractRecord.messages.deleted"))
+        setPendingDelete(false)
+        onSaved?.()
+        onBack()
+      })
+      .catch((apiError) => setError(apiError.message))
   }
 
   function handleRenew() {
-    const renewedEndDate = addMonths(endDate, 24)
-    setEndDate(renewedEndDate)
+    const renewedEndDate = addMonths(form.endDate, 24)
+    updateField("endDate", renewedEndDate)
+    updateField("status", "ACTIVE")
     setMessage(t("contractRecord.messages.renewed", { date: renewedEndDate }))
   }
 
@@ -73,7 +160,7 @@ function ContractRecord({ contract, onBack }) {
       t("contractRecord.title"),
       `${t("entities.property")}: ${contract.address}`,
       `${t("entities.tenant")}: ${contract.tenant}`,
-      `${t("contractRecord.fields.end")}: ${endDate}`,
+      `${t("contractRecord.fields.end")}: ${form.endDate}`,
     ].join("\n")
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
     const url = URL.createObjectURL(blob)
@@ -87,9 +174,38 @@ function ContractRecord({ contract, onBack }) {
   }
 
   function handleResetAndExit() {
-    setMessage("")
-    setPendingDelete(false)
-    onBack()
+    saveContract()
+  }
+
+  async function saveContract() {
+    setError("")
+    setIsSaving(true)
+
+    try {
+      const payload = {
+        folder: form.folder,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        status: form.status,
+        propertyId: form.propertyId,
+        tenantId: form.tenantId,
+        ownerId: form.ownerId,
+      }
+
+      if (contract.id) {
+        await updateContract(contract.id, payload)
+      } else {
+        await createContract(payload)
+      }
+
+      setPendingDelete(false)
+      onSaved?.()
+      onBack()
+    } catch (apiError) {
+      setError(apiError.message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -135,9 +251,9 @@ function ContractRecord({ contract, onBack }) {
         ))}
       </div>
 
-      {message ? (
+      {message || error ? (
         <div className="border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-          {message}
+          {error || message}
         </div>
       ) : null}
 
@@ -150,8 +266,8 @@ function ContractRecord({ contract, onBack }) {
           <CardAction>
             <DatePickerField
               label={t("contractRecord.fields.startDate")}
-              onChange={setCreatedAt}
-              value={createdAt}
+              onChange={(value) => updateField("startDate", value)}
+              value={form.startDate}
             />
           </CardAction>
         </CardHeader>
@@ -163,7 +279,13 @@ function ContractRecord({ contract, onBack }) {
               name="property"
               onNew={() => setIsNewPropertyOpen(true)}
               onViewData={() => setActiveTab("owners")}
-              value={contract.address}
+              onSelect={selectProperty}
+              options={properties.map((property) => ({
+                label: `${property.folder} - ${property.address}`,
+                value: property.id,
+              }))}
+              selectedId={form.propertyId}
+              value={propertyDisplayValue}
             />
             <EntityPicker
               icon={User}
@@ -171,19 +293,29 @@ function ContractRecord({ contract, onBack }) {
               name="tenant"
               onNew={() => setIsNewTenantOpen(true)}
               onViewData={() => setActiveTab("tenantAndGuarantors")}
-              value={contract.tenant}
+              onSelect={selectTenant}
+              options={tenants.map((tenant) => ({
+                label: formatPersonName(tenant.person),
+                value: tenant.id,
+              }))}
+              selectedId={form.tenantId}
+              value={tenantDisplayValue}
             />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title={t("contractRecord.sections.periods")}>
               <div className="grid gap-3 md:grid-cols-[180px_90px_180px]">
-                <Field defaultValue="1/1/2026" label={t("contractRecord.fields.start")} />
+                <Field
+                  label={t("contractRecord.fields.start")}
+                  onChange={(event) => updateField("startDate", event.target.value)}
+                  value={form.startDate}
+                />
                 <Field defaultValue="24" label={t("contractRecord.fields.installments")} />
                 <Field
                   label={t("contractRecord.fields.end")}
-                  onChange={(event) => setEndDate(event.target.value)}
-                  value={endDate}
+                  onChange={(event) => updateField("endDate", event.target.value)}
+                  value={form.endDate}
                 />
               </div>
 
@@ -289,17 +421,38 @@ function ContractRecord({ contract, onBack }) {
           <ToolbarButton icon={Download} onClick={handleDownload}>
             {t("actions.download")}
           </ToolbarButton>
-          <ToolbarButton icon={Save} onClick={handleResetAndExit}>
+          <ToolbarButton disabled={isSaving} icon={Save} onClick={handleResetAndExit}>
             {t("actions.resetAndExit")}
           </ToolbarButton>
         </div>
       ) : null}
 
       {isNewPropertyOpen ? (
-        <NewPropertyModal onClose={() => setIsNewPropertyOpen(false)} />
+        <NewPropertyModal
+          onClose={() => setIsNewPropertyOpen(false)}
+          onSaved={(property) => {
+            setProperties((currentProperties) => [property, ...currentProperties])
+            setForm((currentForm) => ({
+              ...currentForm,
+              folder: property.folder,
+              ownerId:
+                property.owners.find((propertyOwner) => propertyOwner.isPrimary)
+                  ?.ownerId ??
+                property.owners[0]?.ownerId ??
+                currentForm.ownerId,
+              propertyId: property.id,
+            }))
+          }}
+        />
       ) : null}
       {isNewTenantOpen ? (
-        <NewTenantModal onClose={() => setIsNewTenantOpen(false)} />
+        <NewTenantModal
+          onClose={() => setIsNewTenantOpen(false)}
+          onSaved={(tenant) => {
+            setTenants((currentTenants) => [tenant, ...currentTenants])
+            selectTenant(tenant.id)
+          }}
+        />
       ) : null}
     </section>
   )
@@ -445,7 +598,17 @@ function PanelTitle({ children }) {
   )
 }
 
-function EntityPicker({ icon: Icon, label, name, onNew, onViewData, value }) {
+function EntityPicker({
+  icon: Icon,
+  label,
+  name,
+  onNew,
+  onSelect,
+  onViewData,
+  options,
+  selectedId,
+  value,
+}) {
   const { t } = useTranslation()
 
   return (
@@ -457,14 +620,20 @@ function EntityPicker({ icon: Icon, label, name, onNew, onViewData, value }) {
       <select
         aria-label={t("actions.selectEntity", { entity: label })}
         className="h-8 border border-input bg-background px-2 text-sm text-foreground"
-        defaultValue=""
+        onChange={(event) => onSelect(event.target.value)}
+        value={selectedId}
       >
         <option value="">{t("actions.choose")}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
       <Label className="pb-1 font-medium text-foreground" htmlFor={name}>
         {label}
       </Label>
-      <Input aria-label={label} defaultValue={value} id={name} name={name} />
+      <Input aria-label={label} id={name} name={name} readOnly value={value} />
       <Button onClick={onViewData} size="sm" variant="outline">
         <Home />
         {t("actions.viewData")}
@@ -631,9 +800,15 @@ function DatePickerField({ label, onChange, placement = "bottom", value }) {
   )
 }
 
-function ToolbarButton({ children, icon: Icon, onClick, variant = "secondary" }) {
+function ToolbarButton({
+  children,
+  disabled = false,
+  icon: Icon,
+  onClick,
+  variant = "secondary",
+}) {
   return (
-    <Button onClick={onClick} size="sm" variant={variant}>
+    <Button disabled={disabled} onClick={onClick} size="sm" variant={variant}>
       <Icon />
       {children}
     </Button>
@@ -689,6 +864,10 @@ function addMonths(dateValue, amount) {
   date.setMonth(date.getMonth() + amount)
 
   return new Intl.DateTimeFormat("es-AR").format(date)
+}
+
+function formatPersonName(person) {
+  return `${person.lastName}, ${person.firstName}`.toLowerCase()
 }
 
 export { ContractRecord }
