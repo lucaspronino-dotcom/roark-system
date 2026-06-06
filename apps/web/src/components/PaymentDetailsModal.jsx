@@ -1,4 +1,5 @@
-import { Trash2, X } from "lucide-react"
+import { Download, Trash2, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -17,30 +18,39 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { getReceipts } from "@/services/receiptsService"
 
-const paymentRows = [
-  {
-    paid: "$ 712.000,00",
-    receipt: "4521",
-    receiptDate: "28/5/2026",
-    total: "$ 712.000,00",
-  },
-  {
-    paid: "$ 312.000,00",
-    receipt: "4018",
-    receiptDate: "25/2/2026",
-    total: "$ 312.000,00",
-  },
-  {
-    paid: "$ 312.000,00",
-    receipt: "3713",
-    receiptDate: "7/1/2026",
-    total: "$ 312.000,00",
-  },
-]
-
-function PaymentDetailsModal({ onClose, personName }) {
+function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
   const { t } = useTranslation()
+  const [payments, setPayments] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedReceipt, setSelectedReceipt] = useState(null)
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadReceipts() {
+      setIsLoading(true)
+
+      try {
+        const receipts = await getReceipts({ contractId, kind, personName })
+
+        if (!ignore) {
+          setPayments(receipts)
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadReceipts()
+
+    return () => {
+      ignore = true
+    }
+  }, [contractId, kind, personName])
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
@@ -80,18 +90,40 @@ function PaymentDetailsModal({ onClose, personName }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paymentRows.map((payment) => (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell className="text-muted-foreground" colSpan={6}>
+                      {t("table.loading")}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+                {!isLoading && payments.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-muted-foreground" colSpan={6}>
+                      {t("table.empty")}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+                {payments.map((payment) => (
                   <TableRow key={payment.receipt}>
                     <TableCell>{payment.receiptDate}</TableCell>
                     <TableCell>
-                      <button className="font-medium underline">
+                      <button
+                        className="font-medium underline"
+                        onClick={() => setSelectedReceipt(payment)}
+                        type="button"
+                      >
                         {payment.receipt}
                       </button>
                     </TableCell>
-                    <TableCell className="text-right">{payment.total}</TableCell>
-                    <TableCell className="text-right">{payment.paid}</TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(payment.total)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(payment.paid)}
+                    </TableCell>
                     <TableCell className="text-right font-semibold text-destructive">
-                      $ 0,00
+                      {formatCurrency(payment.balance)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Button
@@ -109,8 +141,56 @@ function PaymentDetailsModal({ onClose, personName }) {
           </div>
         </CardContent>
       </Card>
+
+      {selectedReceipt ? (
+        <ReceiptPdfModal
+          onClose={() => setSelectedReceipt(null)}
+          receipt={selectedReceipt}
+        />
+      ) : null}
     </div>
   )
+}
+
+function ReceiptPdfModal({ onClose, receipt }) {
+  const pdfUrl = `data:application/pdf;base64,${receipt.pdfBase64}`
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
+      <Card className="h-[90vh] w-full max-w-5xl overflow-hidden shadow-lg">
+        <CardHeader className="flex-row items-center justify-between border-b">
+          <CardTitle>PDF recibo N° {receipt.receipt}</CardTitle>
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <a download={`recibo-${receipt.receipt}.pdf`} href={pdfUrl}>
+                <Download />
+                Descargar
+              </a>
+            </Button>
+            <Button onClick={onClose} size="icon-sm" variant="ghost">
+              <X />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="h-[calc(90vh-73px)] p-0">
+          <iframe
+            className="h-full w-full bg-white"
+            src={pdfUrl}
+            title={`PDF recibo N° ${receipt.receipt}`}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-AR", {
+    currency: "ARS",
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    style: "currency",
+  }).format(Number(value || 0))
 }
 
 export { PaymentDetailsModal }

@@ -1,4 +1,4 @@
-import { ArrowLeft, Printer, Trash2 } from "lucide-react"
+import { ArrowLeft, Download, Printer, Trash2, X } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { createReceipt, getNextReceiptNumber } from "@/services/receiptsService"
 
 const settlementItems = [
   {
@@ -60,13 +61,29 @@ const settlementItems = [
   },
 ]
 
+const initialRegularConcepts = [
+  { accountDescription: "junio/2026 luz -", detail: "luz", amount: "$ 11.122,00" },
+  { accountDescription: "junio/2026 agua -", detail: "agua", amount: "$ 1.870,00" },
+  { accountDescription: "junio/2026 gas -", detail: "gas", amount: "$ 8.414,00" },
+  { accountDescription: "junio/2026 internet -", detail: "internet", amount: "$ 12.329,00" },
+  {
+    accountDescription: "Alquiler Cuota:4 junio-2026",
+    detail: "honorarios inmobiliaria",
+    amount: "$ 260.000,00",
+  },
+]
+
 function RentSettlement({ contract, onBack }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("account")
   const [items, setItems] = useState(settlementItems)
+  const [regularConcepts, setRegularConcepts] = useState(initialRegularConcepts)
   const [noteText, setNoteText] = useState("")
   const [notes, setNotes] = useState([])
   const [paidAmount, setPaidAmount] = useState(null)
+  const [settlementPdfUrl, setSettlementPdfUrl] = useState(null)
+  const [settlementPdfTitle, setSettlementPdfTitle] = useState("")
+  const [isSavingReceipt, setIsSavingReceipt] = useState(false)
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
   const total = items.reduce(
     (sum, item) => (item.apply ? sum + Number(item.edit || 0) : sum),
@@ -115,6 +132,83 @@ function RentSettlement({ contract, onBack }) {
 
     setNotes((currentNotes) => [nextNote, ...currentNotes])
     setNoteText("")
+  }
+
+  function closeSettlementPdf() {
+    if (settlementPdfUrl) {
+      URL.revokeObjectURL(settlementPdfUrl)
+    }
+
+    setSettlementPdfUrl(null)
+  }
+
+  function printSettlement() {
+    if (settlementPdfUrl) {
+      URL.revokeObjectURL(settlementPdfUrl)
+    }
+
+    const pdfBlob = createSettlementPdf({
+      balance,
+      balanceLabel,
+      contract,
+      date: currentDate,
+      documentTitle: "LIQUIDACION ALQUILER",
+      items,
+      notes,
+      paidAmount: effectivePaidAmount,
+      total,
+    })
+
+    setSettlementPdfTitle("PDF liquidacion alquiler")
+    setSettlementPdfUrl(URL.createObjectURL(pdfBlob))
+  }
+
+  async function confirmAndPrintReceipt() {
+    setIsSavingReceipt(true)
+
+    try {
+      const { number } = await getNextReceiptNumber()
+      const documentTitle = `RECIBO N° ${number}`
+      const appliedItems = items.filter((item) => item.apply)
+      const pdfBlob = createSettlementPdf({
+        balance,
+        balanceLabel,
+        contract,
+        date: currentDate,
+        documentTitle,
+        items,
+        notes,
+        paidAmount: effectivePaidAmount,
+        total,
+      })
+      const pdfBase64 = await blobToBase64(pdfBlob)
+
+      await createReceipt({
+        balance,
+        contractId: contract.id,
+        date: currentDate,
+        items: appliedItems.map((item) => ({
+          amount: Number(item.edit || 0),
+          description: item.description,
+          dueDate: item.dueDate,
+        })),
+        kind: "OWNER_SETTLEMENT",
+        number,
+        paid: effectivePaidAmount,
+        pdfBase64,
+        personName: contract.owner,
+        total,
+      })
+
+      if (settlementPdfUrl) {
+        URL.revokeObjectURL(settlementPdfUrl)
+      }
+
+      setSettlementPdfTitle(`PDF recibo N° ${number}`)
+      setSettlementPdfUrl(URL.createObjectURL(pdfBlob))
+    } finally {
+      setIsSavingReceipt(false)
+    }
   }
 
   return (
@@ -287,11 +381,18 @@ function RentSettlement({ contract, onBack }) {
                     value={formatCurrency(balance)}
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Button className="order-1 bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground">
+                    <Button
+                      className="order-1 bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                      onClick={printSettlement}
+                    >
                       <Printer />
                       {t("rentSettlement.actions.printSettlement")}
                     </Button>
-                    <Button className="order-2">
+                    <Button
+                      className="order-2"
+                      disabled={isSavingReceipt}
+                      onClick={confirmAndPrintReceipt}
+                    >
                       <Printer />
                       {t("rentSettlement.actions.confirmAndPrint")}
                     </Button>
@@ -302,8 +403,10 @@ function RentSettlement({ contract, onBack }) {
           ) : null}
 
           {activeTab === "extraConcepts" ? (
-          <ExtraConcepts
+            <ExtraConcepts
+              concepts={regularConcepts}
               onAddToAccount={addItemToAccount}
+              onConceptsChange={setRegularConcepts}
               onRemoveFromAccount={removeItemByDescription}
             />
           ) : null}
@@ -344,6 +447,14 @@ function RentSettlement({ contract, onBack }) {
           ) : null}
         </CardContent>
       </Card>
+
+      {settlementPdfUrl ? (
+        <SettlementPdfModal
+          onClose={closeSettlementPdf}
+          pdfUrl={settlementPdfUrl}
+          title={settlementPdfTitle}
+        />
+      ) : null}
     </section>
   )
 }
@@ -393,6 +504,194 @@ function TotalBox({
       />
     </div>
   )
+}
+
+function SettlementPdfModal({ onClose, pdfUrl, title }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
+      <Card className="h-[90vh] w-full max-w-5xl overflow-hidden shadow-lg">
+        <CardHeader className="flex-row items-center justify-between border-b">
+          <CardTitle>{title}</CardTitle>
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <a download="liquidacion-alquiler.pdf" href={pdfUrl}>
+                <Download />
+                Descargar
+              </a>
+            </Button>
+            <Button onClick={onClose} size="icon-sm" variant="ghost">
+              <X />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="h-[calc(90vh-73px)] p-0">
+          <iframe
+            className="h-full w-full bg-white"
+            src={pdfUrl}
+            title="PDF liquidacion alquiler"
+          />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function createSettlementPdf({
+  balance,
+  balanceLabel,
+  contract,
+  date,
+  documentTitle,
+  items,
+  notes,
+  paidAmount,
+  total,
+}) {
+  const lines = []
+
+  function addText(x, y, size, text) {
+    lines.push("BT")
+    lines.push(`/F1 ${size} Tf`)
+    lines.push(`${x} ${y} Td`)
+    lines.push(`(${escapePdfText(text)}) Tj`)
+    lines.push("ET")
+  }
+
+  function addLine(x1, y1, x2, y2) {
+    lines.push(`${x1} ${y1} m`)
+    lines.push(`${x2} ${y2} l`)
+    lines.push("S")
+  }
+
+  addText(50, 800, 18, documentTitle)
+  addLine(50, 790, 545, 790)
+  addText(50, 765, 10, `Propiedad: ${contract.address}`)
+  addText(50, 748, 10, `Inquilino: ${contract.tenant}`)
+  addText(50, 731, 10, `Fecha: ${date}`)
+
+  addText(50, 700, 10, "Vence")
+  addText(115, 700, 10, "Descripcion")
+  addText(365, 700, 10, "Monto")
+  addText(445, 700, 10, "Total")
+  addLine(50, 692, 545, 692)
+
+  let y = 675
+  items
+    .filter((item) => item.apply)
+    .forEach((item) => {
+      addText(50, y, 9, item.dueDate)
+      addText(115, y, 9, truncatePdfText(item.description, 42))
+      addText(365, y, 9, formatCurrency(item.edit))
+      addText(445, y, 9, formatCurrency(item.edit))
+      y -= 17
+    })
+
+  addLine(50, y - 4, 545, y - 4)
+  y -= 26
+  addText(350, y, 10, "Total")
+  addText(445, y, 10, formatCurrency(total))
+  y -= 18
+  addText(350, y, 10, "Total abonado")
+  addText(445, y, 10, formatCurrency(paidAmount))
+  y -= 18
+  addText(350, y, 10, balanceLabel)
+  addText(445, y, 10, formatCurrency(balance))
+
+  if (notes.length > 0) {
+    y -= 40
+    addText(50, y, 10, "Nota al pie del recibo")
+    y -= 18
+    notes.forEach((note) => {
+      splitPdfText(note, 88).forEach((line) => {
+        addText(50, y, 9, line)
+        y -= 14
+      })
+    })
+  }
+
+  const stream = lines.join("\n")
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  ]
+
+  let pdf = "%PDF-1.4\n"
+  const offsets = [0]
+
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += "0000000000 65535 f \n"
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`
+  })
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return new Blob([pdf], { type: "application/pdf" })
+}
+
+function escapePdfText(value) {
+  return stripPdfText(value)
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)")
+}
+
+function stripPdfText(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+}
+
+function truncatePdfText(value, maxLength) {
+  const text = stripPdfText(value)
+
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text
+}
+
+function splitPdfText(value, maxLength) {
+  const words = stripPdfText(value).split(/\s+/).filter(Boolean)
+  const lines = []
+  let currentLine = ""
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (nextLine.length > maxLength) {
+      lines.push(currentLine)
+      currentLine = word
+      return
+    }
+
+    currentLine = nextLine
+  })
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.addEventListener("error", () => reject(reader.error))
+    reader.addEventListener("load", () => {
+      const result = String(reader.result ?? "")
+      resolve(result.split(",")[1] ?? "")
+    })
+    reader.readAsDataURL(blob)
+  })
 }
 
 export { RentSettlement }

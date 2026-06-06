@@ -1,0 +1,11 @@
+-- AlterTable
+ALTER TABLE "contracts" ALTER COLUMN "startDate" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "owners" ALTER COLUMN "address" DROP DEFAULT,
+ALTER COLUMN "city" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "properties" ALTER COLUMN "type" DROP DEFAULT,
+ALTER COLUMN "status" DROP DEFAULT,
+ALTER COLUMN "city" DROP DEFAULT;

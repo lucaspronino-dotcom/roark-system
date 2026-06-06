@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const regularConcepts = [
+const initialRegularConcepts = [
   { accountDescription: "junio/2026 luz -", detail: "luz", amount: "$ 11.122,00" },
   { accountDescription: "junio/2026 agua -", detail: "agua", amount: "$ 1.870,00" },
   { accountDescription: "junio/2026 gas -", detail: "gas", amount: "$ 8.414,00" },
@@ -47,10 +47,15 @@ const months = [
   "Dic",
 ]
 
-function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
+function ExtraConcepts({
+  concepts,
+  onAddToAccount,
+  onConceptsChange,
+  onRemoveFromAccount,
+}) {
   const { t } = useTranslation()
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
-  const [concepts, setConcepts] = useState(regularConcepts)
+  const [localConcepts, setLocalConcepts] = useState(initialRegularConcepts)
   const [date, setDate] = useState(currentDate)
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
@@ -58,6 +63,8 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
   const [error, setError] = useState("")
   const [selectedConcept, setSelectedConcept] = useState(null)
   const [isNewRegularConceptOpen, setIsNewRegularConceptOpen] = useState(false)
+  const visibleConcepts = concepts ?? localConcepts
+  const setConcepts = onConceptsChange ?? setLocalConcepts
 
   function handleConfirm() {
     const cleanDescription = description.trim()
@@ -116,7 +123,7 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {concepts.map((concept, index) => (
+              {visibleConcepts.map((concept, index) => (
                 <TableRow key={concept.detail}>
                   <TableCell>
                     <Button
@@ -231,7 +238,7 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
           concept={selectedConcept}
           onClose={() => setSelectedConcept(null)}
           onDelete={() => {
-            const conceptIndex = concepts.findIndex(
+            const conceptIndex = visibleConcepts.findIndex(
               (concept) => concept.detail === selectedConcept.detail,
             )
 
@@ -247,8 +254,13 @@ function ExtraConcepts({ onAddToAccount, onRemoveFromAccount }) {
       {isNewRegularConceptOpen ? (
         <RegularConceptModal
           onClose={() => setIsNewRegularConceptOpen(false)}
-          onSave={(concept) => {
+          onSave={(concept, accountItem) => {
             setConcepts((currentConcepts) => [...currentConcepts, concept])
+
+            if (accountItem) {
+              onAddToAccount?.(accountItem)
+            }
+
             setIsNewRegularConceptOpen(false)
           }}
         />
@@ -303,11 +315,26 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
       return
     }
 
+    const accountDescription = `junio/2026 ${cleanConceptName} -`
+    const accountItem =
+      tenantEffect === "addToPayment" || tenantEffect === "discountPayment"
+        ? {
+            apply: true,
+            description: accountDescription,
+            dueDate: startDate,
+            edit:
+              tenantEffect === "discountPayment"
+                ? -numericAmount
+                : numericAmount,
+            penalty: "$ 0,00",
+          }
+        : null
+
     onSave?.({
-      accountDescription: `junio/2026 ${cleanConceptName} -`,
+      accountDescription,
       amount: formatCurrency(numericAmount),
       detail: cleanConceptName,
-    })
+    }, accountItem)
     onClose()
   }
 
