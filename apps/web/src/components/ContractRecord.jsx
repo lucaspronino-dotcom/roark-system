@@ -50,17 +50,19 @@ const periodKeys = [
 function ContractRecord({ contract, onBack, onSaved }) {
   const { t } = useTranslation()
   const today = formatDateValue(new Date())
+  const initialStartDate = contract.startDate || today
+  const initialInstallments = "24"
   const [activeTab, setActiveTab] = useState("mainData")
   const [form, setForm] = useState(() => ({
     folder: contract.folder ?? "",
-    startDate: contract.startDate ?? today,
-    endDate: contract.end ?? calculateEndDate(contract.startDate ?? today, "24"),
+    startDate: initialStartDate,
+    endDate: contract.end || calculateEndDate(initialStartDate, initialInstallments),
     status: contract.status === "Vencido" ? "EXPIRED" : "ACTIVE",
     propertyId: contract.propertyId ?? "",
     tenantId: contract.tenantId ?? "",
     ownerId: contract.ownerId ?? "",
   }))
-  const [installments, setInstallments] = useState("24")
+  const [installments, setInstallments] = useState(initialInstallments)
   const [adjustmentInterval, setAdjustmentInterval] = useState(() =>
     loadContractRecordSetting(contract.id, "adjustmentInterval", "4"),
   )
@@ -316,7 +318,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
           </CardAction>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-2 rounded-none border bg-secondary/40 p-3">
+          <div className="w-full space-y-2 rounded-none border bg-secondary/40 p-3">
             <EntityPicker
               icon={Home}
               label={t("entities.property")}
@@ -349,10 +351,11 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title={t("contractRecord.sections.periods")}>
-              <div className="grid gap-3 md:grid-cols-[160px_80px_150px_70px_120px]">
+              <div className="grid gap-3 md:grid-cols-[120px_70px_110px_55px_120px]">
                 <DatePickerField
                   label={t("contractRecord.fields.start")}
                   onChange={updateStartDate}
+                  placement="right"
                   value={form.startDate}
                 />
                 <Field
@@ -374,20 +377,20 @@ function ContractRecord({ contract, onBack, onSaved }) {
                   value={adjustmentInterval}
                 />
                 <div className="space-y-1">
-                  <Label className="font-medium text-foreground">Tipo</Label>
+                  <Label className="text-xs font-medium text-foreground">Tipo</Label>
                   <div className="grid grid-cols-3 gap-1">
                     {["ICL", "IPC", "OTRO"].map((option) => (
                       <label
-                        className="flex h-9 items-center justify-center gap-1 border border-input bg-background px-2 text-xs font-medium"
+                        className="flex h-6 items-center justify-center gap-1 text-[11px] font-medium leading-none"
                         key={option}
                       >
+                        <span>{option}</span>
                         <input
                           checked={adjustmentType === option}
-                          className="size-3 accent-primary"
+                          className="size-2.5 accent-primary"
                           onChange={() => setAdjustmentType(option)}
                           type="checkbox"
                         />
-                        <span>{option}</span>
                       </label>
                     ))}
                   </div>
@@ -711,8 +714,8 @@ function EntityPicker({
   const { t } = useTranslation()
 
   return (
-    <div className="grid items-end gap-2 md:grid-cols-[160px_120px_80px_1fr_120px]">
-      <Button onClick={onNew} size="sm" variant="outline">
+    <div className="grid w-full items-end gap-2 md:grid-cols-[170px_minmax(180px,1fr)_90px_minmax(180px,1fr)_120px]">
+      <Button className="h-8 justify-start" onClick={onNew} size="sm" variant="outline">
         <Icon />
         {t("actions.newEntity", { entity: label })}
       </Button>
@@ -837,6 +840,8 @@ function DatePickerField({ label, onChange, placement = "bottom", value }) {
             "absolute right-0 z-50 w-72 border bg-popover p-3 text-popover-foreground shadow-lg",
             placement === "top"
               ? "bottom-0 left-full right-auto ml-3"
+              : placement === "right"
+                ? "left-full right-auto top-0 ml-3"
               : "top-full mt-2",
           ].join(" ")}
         >
