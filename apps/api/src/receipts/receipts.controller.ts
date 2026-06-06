@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common"
+import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/common"
 import { ReceiptKind } from "@prisma/client"
 
 import { CreateReceiptDto } from "./dto/create-receipt.dto"
@@ -25,5 +25,10 @@ export class ReceiptsController {
   @Post()
   create(@Body() createReceiptDto: CreateReceiptDto) {
     return this.receiptsService.create(createReceiptDto)
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string) {
+    return this.receiptsService.remove(id)
   }
 }

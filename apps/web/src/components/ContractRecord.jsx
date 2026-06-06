@@ -49,16 +49,24 @@ const periodKeys = [
 
 function ContractRecord({ contract, onBack, onSaved }) {
   const { t } = useTranslation()
+  const today = formatDateValue(new Date())
   const [activeTab, setActiveTab] = useState("mainData")
   const [form, setForm] = useState(() => ({
     folder: contract.folder ?? "",
-    startDate: contract.startDate ?? "1/1/2026",
-    endDate: contract.end ?? "",
+    startDate: contract.startDate ?? today,
+    endDate: contract.end ?? calculateEndDate(contract.startDate ?? today, "24"),
     status: contract.status === "Vencido" ? "EXPIRED" : "ACTIVE",
     propertyId: contract.propertyId ?? "",
     tenantId: contract.tenantId ?? "",
     ownerId: contract.ownerId ?? "",
   }))
+  const [installments, setInstallments] = useState("24")
+  const [adjustmentInterval, setAdjustmentInterval] = useState(() =>
+    loadContractRecordSetting(contract.id, "adjustmentInterval", "4"),
+  )
+  const [adjustmentType, setAdjustmentType] = useState(() =>
+    loadContractRecordSetting(contract.id, "adjustmentType", "ICL"),
+  )
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
   const [terminationDate, setTerminationDate] = useState("")
@@ -74,6 +82,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const tenantDisplayValue = selectedTenant
     ? formatPersonName(selectedTenant.person)
     : contract.tenant ?? ""
+  const periodRows = getPeriodRows(Number(installments), Number(adjustmentInterval))
 
   useEffect(() => {
     let ignore = false
@@ -103,8 +112,43 @@ function ContractRecord({ contract, onBack, onSaved }) {
     }
   }, [])
 
+  useEffect(() => {
+    saveContractRecordSetting(contract.id, "adjustmentInterval", adjustmentInterval)
+  }, [adjustmentInterval, contract.id])
+
+  useEffect(() => {
+    saveContractRecordSetting(contract.id, "adjustmentType", adjustmentType)
+  }, [adjustmentType, contract.id])
+
   function updateField(name, value) {
     setForm((currentForm) => ({ ...currentForm, [name]: value }))
+  }
+
+  function updateStartDate(value) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      endDate: calculateEndDate(value, installments),
+      startDate: value,
+    }))
+  }
+
+  function updateInstallments(value) {
+    setInstallments(value)
+    setForm((currentForm) => ({
+      ...currentForm,
+      endDate: calculateEndDate(currentForm.startDate, value),
+    }))
+  }
+
+  function updateAdjustmentInterval(value) {
+    const numericValue = Number(value)
+
+    if (value === "" || Number.isNaN(numericValue)) {
+      setAdjustmentInterval(value)
+      return
+    }
+
+    setAdjustmentInterval(String(Math.min(12, Math.max(0, numericValue))))
   }
 
   function selectProperty(propertyId) {
@@ -305,34 +349,65 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title={t("contractRecord.sections.periods")}>
-              <div className="grid gap-3 md:grid-cols-[180px_90px_180px]">
-                <Field
+              <div className="grid gap-3 md:grid-cols-[160px_80px_150px_70px_120px]">
+                <DatePickerField
                   label={t("contractRecord.fields.start")}
-                  onChange={(event) => updateField("startDate", event.target.value)}
+                  onChange={updateStartDate}
                   value={form.startDate}
                 />
-                <Field defaultValue="24" label={t("contractRecord.fields.installments")} />
+                <Field
+                  label={t("contractRecord.fields.installments")}
+                  onChange={(event) => updateInstallments(event.target.value)}
+                  value={installments}
+                />
                 <Field
                   label={t("contractRecord.fields.end")}
                   onChange={(event) => updateField("endDate", event.target.value)}
                   value={form.endDate}
                 />
+                <Field
+                  label="ajuste"
+                  max="12"
+                  min="0"
+                  onChange={(event) => updateAdjustmentInterval(event.target.value)}
+                  type="number"
+                  value={adjustmentInterval}
+                />
+                <div className="space-y-1">
+                  <Label className="font-medium text-foreground">Tipo</Label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {["ICL", "IPC", "OTRO"].map((option) => (
+                      <label
+                        className="flex h-9 items-center justify-center gap-1 border border-input bg-background px-2 text-xs font-medium"
+                        key={option}
+                      >
+                        <input
+                          checked={adjustmentType === option}
+                          className="size-3 accent-primary"
+                          onChange={() => setAdjustmentType(option)}
+                          type="checkbox"
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {periodKeys.map((periodKey, index) => (
+              {periodRows.map((untilInstallment, index) => (
                 <div
                   className="grid gap-3 md:grid-cols-[220px_120px_180px]"
-                  key={periodKey}
+                  key={untilInstallment}
                 >
                   <Field
                     defaultValue={index === 0 ? "$ 350.000,00" : ""}
                     label={t("contractRecord.fields.rentPeriod", {
-                      period: t(periodKey),
+                      period: getPeriodLabel(index, t),
                     })}
                   />
                   <Field
-                    defaultValue={`${12 + index * 4}`}
                     label={t("contractRecord.fields.untilInstallment")}
+                    value={`${untilInstallment}`}
                   />
                   <Field defaultValue="$ 0,00" label={t("contractRecord.fields.extras")} />
                 </div>
@@ -543,6 +618,7 @@ function PersonDataSection({ defaultName = "", formNumber = 1, title }) {
 
 function ContractOwnersPanel({ contract, onBack }) {
   const { t } = useTranslation()
+  const [administrationMode, setAdministrationMode] = useState("percent")
 
   return (
     <Card>
@@ -566,13 +642,36 @@ function ContractOwnersPanel({ contract, onBack }) {
           <section className="space-y-4">
             <PanelTitle>{t("contractOwners.sections.owners")}</PanelTitle>
             <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-[minmax(260px,1fr)_120px_130px]">
+              <div className="grid gap-4 md:grid-cols-[minmax(260px,1fr)_120px_220px]">
                 <Field
                   defaultValue={contract.owner}
                   label={t("propertyDetail.fields.owner")}
                 />
-                <Field label={t("propertyDetail.fields.participation")} />
-                <Field label={t("propertyDetail.fields.administration")} />
+                <Field
+                  defaultValue="100"
+                  label={t("propertyDetail.fields.participation")}
+                />
+                <div className="space-y-1">
+                  <Label className="font-medium text-foreground">
+                    {t("propertyDetail.fields.administration")}
+                  </Label>
+                  <div className="grid grid-cols-[1fr_80px] gap-2">
+                    <Input
+                      aria-label={t("propertyDetail.fields.administration")}
+                      defaultValue="5"
+                      inputMode="decimal"
+                    />
+                    <select
+                      aria-label="Tipo de administracion"
+                      className="h-9 border border-input bg-background px-2 text-sm text-foreground"
+                      onChange={(event) => setAdministrationMode(event.target.value)}
+                      value={administrationMode}
+                    >
+                      <option value="percent">%</option>
+                      <option value="fixed">$</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               <Field label={t("contractOwners.fields.bankAccountCbu")} />
             </div>
@@ -660,8 +759,11 @@ function Field({
   className,
   defaultValue = "",
   label,
+  max,
+  min,
   name,
   onChange,
+  type = "text",
   value,
 }) {
   return (
@@ -676,8 +778,11 @@ function Field({
         className={className ?? "border-border bg-background text-foreground"}
         defaultValue={value === undefined ? defaultValue : undefined}
         id={name ?? label}
+        max={max}
+        min={min}
         name={name}
         onChange={onChange}
+        type={type}
         value={value}
       />
     </div>
@@ -864,6 +969,70 @@ function addMonths(dateValue, amount) {
   date.setMonth(date.getMonth() + amount)
 
   return new Intl.DateTimeFormat("es-AR").format(date)
+}
+
+function calculateEndDate(startDateValue, installmentsValue) {
+  const startDate = parseDateValue(startDateValue)
+  const installments = Number(installmentsValue)
+
+  if (!startDate || !Number.isFinite(installments) || installments < 1) {
+    return ""
+  }
+
+  const endDate = new Date(startDate)
+
+  endDate.setMonth(endDate.getMonth() + installments - 1)
+  endDate.setDate(endDate.getDate() - 1)
+
+  return formatDateValue(endDate)
+}
+
+function getPeriodRows(installmentsValue, adjustmentValue) {
+  const installments = Math.max(0, Math.floor(installmentsValue || 0))
+  const rawAdjustment = Math.floor(adjustmentValue || 0)
+  const adjustment = Math.min(12, Math.max(0, rawAdjustment))
+  const rows = []
+
+  if (adjustment === 0) {
+    return installments > 0 ? [installments] : []
+  }
+
+  for (
+    let untilInstallment = adjustment;
+    untilInstallment <= installments;
+    untilInstallment += adjustment
+  ) {
+    rows.push(untilInstallment)
+  }
+
+  if (installments > 0 && rows.at(-1) !== installments) {
+    rows.push(installments)
+  }
+
+  return rows
+}
+
+function getPeriodLabel(index, translate) {
+  return periodKeys[index] ? translate(periodKeys[index]) : `${index + 1}to.`
+}
+
+function loadContractRecordSetting(contractId, key, fallbackValue) {
+  if (!contractId || typeof window === "undefined") {
+    return fallbackValue
+  }
+
+  return (
+    window.localStorage.getItem(`contract-record:${contractId}:${key}`) ??
+    fallbackValue
+  )
+}
+
+function saveContractRecordSetting(contractId, key, value) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(`contract-record:${contractId}:${key}`, value)
 }
 
 function formatPersonName(person) {

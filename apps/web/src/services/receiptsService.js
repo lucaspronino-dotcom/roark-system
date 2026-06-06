@@ -1,4 +1,4 @@
-import { get, post } from "@/services/apiClient"
+import { get, post, remove } from "@/services/apiClient"
 
 function createReceipt(receipt) {
   return post("/receipts", receipt)
@@ -28,4 +28,8 @@ function getReceipts({ contractId, kind, personName } = {}) {
   return get(`/receipts${query ? `?${query}` : ""}`)
 }
 
-export { createReceipt, getNextReceiptNumber, getReceipts }
+function deleteReceipt(id) {
+  return remove(`/receipts/${id}`)
+}
+
+export { createReceipt, deleteReceipt, getNextReceiptNumber, getReceipts }

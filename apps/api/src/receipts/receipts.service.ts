@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from "@nestjs/common"
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common"
 import { Prisma, Receipt, ReceiptKind } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
@@ -82,6 +82,41 @@ export class ReceiptsService {
     }
   }
 
+  async remove(id: string) {
+    const targetReceipt = await this.prisma.receipt.findUnique({
+      where: {
+        id,
+      },
+    })
+
+    if (targetReceipt?.kind === ReceiptKind.TENANT_SETTLEMENT) {
+      const targetPeriod = getReceiptPeriodKey(targetReceipt)
+      const ownerReceipts = await this.prisma.receipt.findMany({
+        where: {
+          contractId: targetReceipt.contractId,
+          kind: ReceiptKind.OWNER_SETTLEMENT,
+        },
+      })
+      const hasOwnerReceipt = ownerReceipts.some(
+        (receipt) => getReceiptPeriodKey(receipt) === targetPeriod,
+      )
+
+      if (hasOwnerReceipt) {
+        throw new BadRequestException(
+          "No se puede borrar el recibo del inquilino porque ya existe la liquidacion del propietario para ese periodo",
+        )
+      }
+    }
+
+    const receipt = await this.prisma.receipt.delete({
+      where: {
+        id,
+      },
+    })
+
+    return toReceiptListItem(receipt)
+  }
+
   private async getNextReceiptNumber() {
     const lastReceipt = await this.prisma.receipt.findFirst({
       orderBy: {
@@ -104,6 +139,7 @@ function toReceiptListItem(receipt: ReceiptListItem) {
     pdfBase64: receipt.pdfBase64,
     receipt: String(receipt.number),
     receiptDate: formatDate(receipt.date),
+    snapshot: receipt.snapshot,
     total: receipt.total,
   }
 }
@@ -127,4 +163,27 @@ function formatDate(date: Date) {
   }).format(date)
 }
 
+function getReceiptPeriodKey(receipt: Receipt) {
+  const snapshot = receipt.snapshot as ReceiptSnapshot | null
+  const dueDate = snapshot?.items?.[0]?.dueDate
+
+  if (dueDate) {
+    return getDateTextMonthKey(dueDate)
+  }
+
+  return `${receipt.date.getUTCFullYear()}-${receipt.date.getUTCMonth() + 1}`
+}
+
+function getDateTextMonthKey(dateText: string) {
+  const [, month, year] = dateText.split("/").map(Number)
+
+  return `${year}-${month}`
+}
+
 type ReceiptListItem = Receipt
+
+type ReceiptSnapshot = {
+  items?: Array<{
+    dueDate?: string
+  }>
+}

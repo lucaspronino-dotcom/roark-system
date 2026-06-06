@@ -1,4 +1,4 @@
-import { Download, Trash2, X } from "lucide-react"
+import { ArrowLeft, Download, Trash2, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -18,13 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getReceipts } from "@/services/receiptsService"
+import { deleteReceipt, getReceipts } from "@/services/receiptsService"
 
 function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
   const { t } = useTranslation()
   const [payments, setPayments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
+  const [message, setMessage] = useState("")
 
   useEffect(() => {
     let ignore = false
@@ -51,6 +52,19 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
       ignore = true
     }
   }, [contractId, kind, personName])
+
+  async function removeReceipt(receiptId) {
+    setMessage("")
+
+    try {
+      await deleteReceipt(receiptId)
+      setPayments((currentPayments) =>
+        currentPayments.filter((payment) => payment.id !== receiptId),
+      )
+    } catch {
+      setMessage("¡no puede eliminar un recibo que ya se ha liquidado al propietario!")
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
@@ -128,6 +142,7 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
                     <TableCell className="text-center">
                       <Button
                         aria-label={t("actions.delete")}
+                        onClick={() => removeReceipt(payment.id)}
                         size="icon-sm"
                         variant="ghost"
                       >
@@ -148,6 +163,37 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
           receipt={selectedReceipt}
         />
       ) : null}
+      {message ? (
+        <SmallAlertModal message={message} onClose={() => setMessage("")} />
+      ) : null}
+    </div>
+  )
+}
+
+function SmallAlertModal({ message, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-background/70 p-4 backdrop-blur-sm">
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="flex flex-row items-center justify-between border-b">
+          <CardTitle className="text-base">Aviso</CardTitle>
+          <Button
+            aria-label="Cerrar"
+            onClick={onClose}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <X />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <p className="text-sm font-medium text-destructive">{message}</p>
+          <div className="flex justify-end">
+            <Button onClick={onClose} size="sm">
+              Aceptar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -158,9 +204,13 @@ function ReceiptPdfModal({ onClose, receipt }) {
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
       <Card className="h-[90vh] w-full max-w-5xl overflow-hidden shadow-lg">
-        <CardHeader className="flex-row items-center justify-between border-b">
+        <CardHeader className="flex flex-row items-center justify-between border-b">
           <CardTitle>PDF recibo N° {receipt.receipt}</CardTitle>
           <div className="flex gap-2">
+            <Button onClick={onClose} size="sm" variant="outline">
+              <ArrowLeft />
+              Volver
+            </Button>
             <Button asChild size="sm" variant="outline">
               <a download={`recibo-${receipt.receipt}.pdf`} href={pdfUrl}>
                 <Download />

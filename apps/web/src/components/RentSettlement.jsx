@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, Printer, Trash2, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ExtraConcepts } from "@/components/ExtraConcepts"
@@ -21,7 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { createReceipt, getNextReceiptNumber } from "@/services/receiptsService"
+import {
+  createReceipt,
+  getNextReceiptNumber,
+  getReceipts,
+} from "@/services/receiptsService"
 
 const settlementItems = [
   {
@@ -76,16 +80,20 @@ const initialRegularConcepts = [
 function RentSettlement({ contract, onBack }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("account")
-  const [items, setItems] = useState(settlementItems)
+  const [periodDate, setPeriodDate] = useState(() => parseEsDate(settlementItems[0].dueDate))
+  const [items, setItems] = useState(() => createPeriodItems(parseEsDate(settlementItems[0].dueDate)))
   const [regularConcepts, setRegularConcepts] = useState(initialRegularConcepts)
   const [noteText, setNoteText] = useState("")
   const [notes, setNotes] = useState([])
   const [paidAmount, setPaidAmount] = useState(null)
+  const [receipts, setReceipts] = useState([])
   const [settlementPdfUrl, setSettlementPdfUrl] = useState(null)
   const [settlementPdfTitle, setSettlementPdfTitle] = useState("")
   const [isSavingReceipt, setIsSavingReceipt] = useState(false)
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
-  const total = items.reduce(
+  const isPeriodLocked = hasReceiptForPeriod(receipts, periodDate)
+  const visibleItems = isPeriodLocked ? [] : items
+  const total = visibleItems.reduce(
     (sum, item) => (item.apply ? sum + Number(item.edit || 0) : sum),
     0,
   )
@@ -97,6 +105,28 @@ function RentSettlement({ contract, onBack }) {
       : balance < 0
         ? t("rentSettlement.totals.creditBalance")
         : t("rentSettlement.totals.balance")
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadMonthlyReceipt() {
+      const receipts = await getReceipts({
+        contractId: contract.id,
+        kind: "TENANT_SETTLEMENT",
+        personName: contract.tenant,
+      })
+
+      if (!ignore) {
+        setReceipts(receipts)
+      }
+    }
+
+    loadMonthlyReceipt()
+
+    return () => {
+      ignore = true
+    }
+  }, [contract.id, contract.tenant])
 
   function updateItem(index, nextValues) {
     setItems((currentItems) =>
@@ -153,7 +183,7 @@ function RentSettlement({ contract, onBack }) {
       contract,
       date: currentDate,
       documentTitle: "LIQUIDACION ALQUILER",
-      items,
+      items: visibleItems,
       notes,
       paidAmount: effectivePaidAmount,
       total,
@@ -169,21 +199,21 @@ function RentSettlement({ contract, onBack }) {
     try {
       const { number } = await getNextReceiptNumber()
       const documentTitle = `RECIBO N° ${number}`
-      const appliedItems = items.filter((item) => item.apply)
+      const appliedItems = visibleItems.filter((item) => item.apply)
       const pdfBlob = createSettlementPdf({
         balance,
         balanceLabel,
         contract,
         date: currentDate,
         documentTitle,
-        items,
+        items: visibleItems,
         notes,
         paidAmount: effectivePaidAmount,
         total,
       })
       const pdfBase64 = await blobToBase64(pdfBlob)
 
-      await createReceipt({
+      const receipt = await createReceipt({
         balance,
         contractId: contract.id,
         date: currentDate,
@@ -192,13 +222,15 @@ function RentSettlement({ contract, onBack }) {
           description: item.description,
           dueDate: item.dueDate,
         })),
-        kind: "OWNER_SETTLEMENT",
+        kind: "TENANT_SETTLEMENT",
         number,
         paid: effectivePaidAmount,
         pdfBase64,
-        personName: contract.owner,
+        personName: contract.tenant,
         total,
       })
+      saveOwnerAccountDraft(contract.id, appliedItems)
+      setReceipts((currentReceipts) => [receipt, ...currentReceipts])
 
       if (settlementPdfUrl) {
         URL.revokeObjectURL(settlementPdfUrl)
@@ -209,6 +241,15 @@ function RentSettlement({ contract, onBack }) {
     } finally {
       setIsSavingReceipt(false)
     }
+  }
+
+  function payNextPeriod() {
+    const nextPeriodDate = addMonths(periodDate, 1)
+
+    setPeriodDate(nextPeriodDate)
+    setItems(createPeriodItems(nextPeriodDate))
+    setPaidAmount(null)
+    setActiveTab("account")
   }
 
   return (
@@ -305,7 +346,21 @@ function RentSettlement({ contract, onBack }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item, index) => (
+                    {isPeriodLocked ? (
+                      <TableRow>
+                        <TableCell colSpan={9}>
+                          <div className="flex min-h-48 flex-col items-center justify-center gap-8 text-center">
+                            <p className="text-2xl font-semibold text-destructive">
+                              ¡El recibo del mes {getMonthName(periodDate)} ya ha sido generado!
+                            </p>
+                            <Button onClick={payNextPeriod} size="lg">
+                              Pagar el proximo periodo
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    {!isPeriodLocked && visibleItems.map((item, index) => (
                       <TableRow key={item.description}>
                         <TableCell>
                           <Button
@@ -510,9 +565,13 @@ function SettlementPdfModal({ onClose, pdfUrl, title }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
       <Card className="h-[90vh] w-full max-w-5xl overflow-hidden shadow-lg">
-        <CardHeader className="flex-row items-center justify-between border-b">
+        <CardHeader className="flex flex-row items-center justify-between border-b">
           <CardTitle>{title}</CardTitle>
           <div className="flex gap-2">
+            <Button onClick={onClose} size="sm" variant="outline">
+              <ArrowLeft />
+              Volver
+            </Button>
             <Button asChild size="sm" variant="outline">
               <a download="liquidacion-alquiler.pdf" href={pdfUrl}>
                 <Download />
@@ -692,6 +751,129 @@ function blobToBase64(blob) {
     })
     reader.readAsDataURL(blob)
   })
+}
+
+function saveOwnerAccountDraft(contractId, appliedItems) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  const key = `owner-account-draft:${contractId}`
+  const currentItems = readOwnerAccountDraft(key)
+  const createdAt = Date.now()
+  const ownerItems = appliedItems.map((item, index) =>
+    createOwnerAccountItem({
+      amount: Number(item.edit || 0),
+      date: item.dueDate,
+      description: item.description,
+      id: `${createdAt}-${index}`,
+    }),
+  )
+
+  window.localStorage.setItem(key, JSON.stringify([...ownerItems, ...currentItems]))
+}
+
+function createOwnerAccountItem({ amount, date, description, id }) {
+  const administration = isRentInstallment(description) ? amount * 0.05 : 0
+
+  return {
+    administration,
+    amount,
+    date,
+    description,
+    id,
+    penalties: 0,
+    total: amount - administration,
+  }
+}
+
+function isRentInstallment(description) {
+  return /alquiler\s+cuota/i.test(description)
+}
+
+function readOwnerAccountDraft(key) {
+  try {
+    return JSON.parse(window.localStorage.getItem(key) ?? "[]")
+  } catch {
+    return []
+  }
+}
+
+function createPeriodItems(periodDate) {
+  const basePeriodDate = parseEsDate(settlementItems[0].dueDate)
+  const monthDifference = getMonthDifference(basePeriodDate, periodDate)
+  const monthName = getMonthName(periodDate)
+  const year = periodDate.getFullYear()
+  const dueDate = formatEsDate(periodDate)
+
+  return settlementItems.map((item) => {
+    const isRent = isRentInstallment(item.description)
+    const conceptName = getConceptName(item.description)
+
+    return {
+      ...item,
+      apply: true,
+      dueDate,
+      description: isRent
+        ? `Alquiler Cuota:${4 + monthDifference} ${monthName}-${year}`
+        : `${monthName}/${year} ${conceptName} -`,
+    }
+  })
+}
+
+function hasReceiptForPeriod(receipts, periodDate) {
+  const periodMonth = getMonthKeyFromDate(periodDate)
+
+  return receipts.some((receipt) => {
+    const firstItemDueDate = receipt.snapshot?.items?.[0]?.dueDate
+
+    return getMonthKey(firstItemDueDate ?? receipt.receiptDate) === periodMonth
+  })
+}
+
+function getMonthKey(dateText) {
+  const [, month, year] = String(dateText).split("/").map(Number)
+
+  return `${year}-${month}`
+}
+
+function getMonthKeyFromDate(date) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}`
+}
+
+function parseEsDate(dateText) {
+  const [day, month, year] = String(dateText).split("/").map(Number)
+
+  return new Date(year, month - 1, day)
+}
+
+function formatEsDate(date) {
+  return new Intl.DateTimeFormat("es-AR").format(date)
+}
+
+function getMonthName(date) {
+  return new Intl.DateTimeFormat("es-AR", { month: "long" }).format(date)
+}
+
+function getMonthDifference(startDate, endDate) {
+  return (
+    (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+    endDate.getMonth() -
+    startDate.getMonth()
+  )
+}
+
+function addMonths(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, date.getDate())
+}
+
+function getConceptName(description) {
+  const concept = description
+    .replace(/^[^ ]+\/\d{4}\s+/i, "")
+    .replace(/\s+-$/, "")
+    .trim()
+
+  return concept || description
 }
 
 export { RentSettlement }

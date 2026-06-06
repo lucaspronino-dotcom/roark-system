@@ -10,7 +10,7 @@ async function apiRequest(path, options = {}) {
   })
 
   if (!response.ok) {
-    const message = await response.text()
+    const message = await readErrorMessage(response)
     throw new Error(message || "API request failed")
   }
 
@@ -19,6 +19,18 @@ async function apiRequest(path, options = {}) {
   }
 
   return response.json()
+}
+
+async function readErrorMessage(response) {
+  const text = await response.text()
+
+  try {
+    const error = JSON.parse(text)
+
+    return error.message ?? text
+  } catch {
+    return text
+  }
 }
 
 function get(path) {

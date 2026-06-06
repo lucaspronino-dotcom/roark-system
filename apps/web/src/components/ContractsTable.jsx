@@ -152,8 +152,8 @@ function ContractsTable({
 
       {selectedOwner ? (
         <OwnerAccountModal
+          contract={selectedOwner}
           onClose={() => setSelectedOwner(null)}
-          ownerName={selectedOwner}
         />
       ) : null}
       {selectedPaymentDetails ? (
@@ -263,7 +263,7 @@ function ContractRow({
             personName: contract.owner,
           })
         }
-        onOpen={() => onOpenOwnerAccount?.(contract.owner)}
+        onOpen={() => onOpenOwnerAccount?.(contract)}
       />
     </TableRow>
   )
