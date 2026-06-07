@@ -127,7 +127,7 @@ export class ContractsService {
 function toContractListItem(contract: ContractWithRelations) {
   return {
     id: contract.id,
-    folder: contract.folder,
+    folder: contract.property.folder,
     startDate: formatDate(contract.startDate),
     end: formatDate(contract.endDate),
     address: contract.property.address,

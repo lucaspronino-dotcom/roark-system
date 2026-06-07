@@ -166,6 +166,8 @@
   "propertyDetail.fields.status": "Status",
   "propertyDetail.fields.type": "Type",
   "propertyDetail.fields.zipCode": "Zip code",
+  "propertyDetail.folderWarning.message": "This number is already being used by another folder.",
+  "propertyDetail.folderWarning.title": "Repeated folder number",
   "propertyDetail.ownerModal.fields.address": "Address",
   "propertyDetail.ownerModal.fields.city": "City",
   "propertyDetail.ownerModal.fields.email": "E-mail",

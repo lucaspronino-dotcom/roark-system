@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, Save, Trash2, User } from "lucide-react"
+import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -14,7 +14,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NewOwnerModal } from "@/components/NewOwnerModal"
 import { getOwners } from "@/services/ownersService"
-import { getProperty, updateProperty } from "@/services/propertiesService"
+import {
+  getProperties,
+  getProperty,
+  updateProperty,
+} from "@/services/propertiesService"
 
 const emptyForm = {
   folder: "",
@@ -34,9 +38,11 @@ function PropertyDetail({ onBack, onSaved, property }) {
   const propertyId = property.propertyId ?? property.id
   const [form, setForm] = useState(emptyForm)
   const [owners, setOwners] = useState([])
+  const [properties, setProperties] = useState([])
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isOwnerModalOpen, setIsOwnerModalOpen] = useState(false)
+  const [isFolderWarningOpen, setIsFolderWarningOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -46,9 +52,10 @@ function PropertyDetail({ onBack, onSaved, property }) {
 
     async function loadProperty() {
       try {
-        const [apiProperty, apiOwners] = await Promise.all([
+        const [apiProperty, apiOwners, apiProperties] = await Promise.all([
           getProperty(propertyId),
           getOwners(),
+          getProperties(),
         ])
         const primaryOwner =
           apiProperty.owners.find((propertyOwner) => propertyOwner.isPrimary) ??
@@ -56,6 +63,7 @@ function PropertyDetail({ onBack, onSaved, property }) {
 
         if (!ignore) {
           setOwners(apiOwners)
+          setProperties(apiProperties)
           setForm({
             folder: apiProperty.folder,
             type: apiProperty.type,
@@ -96,6 +104,29 @@ function PropertyDetail({ onBack, onSaved, property }) {
   }
 
   async function handleSave() {
+    if (hasDuplicatedFolder()) {
+      setIsFolderWarningOpen(true)
+      return
+    }
+
+    saveProperty()
+  }
+
+  function hasDuplicatedFolder() {
+    const nextFolder = String(form.folder).trim()
+
+    if (!nextFolder) {
+      return false
+    }
+
+    return properties.some(
+      (currentProperty) =>
+        currentProperty.id !== propertyId &&
+        String(currentProperty.folder).trim() === nextFolder,
+    )
+  }
+
+  async function saveProperty() {
     setError("")
     setIsSaving(true)
 
@@ -216,7 +247,7 @@ function PropertyDetail({ onBack, onSaved, property }) {
                 />
               </div>
 
-              <div className="grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[76px_minmax(180px,1fr)_104px] lg:grid-cols-[76px_minmax(180px,1fr)_104px_112px_112px_88px_36px] md:items-end">
+              <div className="grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[76px_minmax(180px,1fr)_104px] lg:grid-cols-[76px_minmax(180px,1fr)_112px_112px_88px_36px] md:items-end">
                 <CheckboxField
                   checked={form.isPrimary}
                   label={t("propertyDetail.fields.primaryOwner")}
@@ -229,10 +260,6 @@ function PropertyDetail({ onBack, onSaved, property }) {
                   owners={owners}
                   value={form.ownerId}
                 />
-                <Button size="sm" type="button" variant="outline">
-                  <User />
-                  {t("propertyDetail.actions.data")}
-                </Button>
                 <Field
                   label={t("propertyDetail.fields.participation")}
                   name="participation"
@@ -282,7 +309,41 @@ function PropertyDetail({ onBack, onSaved, property }) {
           onSaved={handleOwnerSaved}
         />
       ) : null}
+      {isFolderWarningOpen ? (
+        <FolderWarningModal
+          onAccept={() => {
+            setIsFolderWarningOpen(false)
+            saveProperty()
+          }}
+        />
+      ) : null}
     </section>
+  )
+}
+
+function FolderWarningModal({ onAccept }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm">
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader className="border-b">
+          <CardTitle className="text-base font-semibold text-primary">
+            {t("propertyDetail.folderWarning.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <p className="text-sm text-foreground">
+            {t("propertyDetail.folderWarning.message")}
+          </p>
+          <div className="flex justify-end">
+            <Button onClick={onAccept} type="button">
+              {t("actions.accept")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

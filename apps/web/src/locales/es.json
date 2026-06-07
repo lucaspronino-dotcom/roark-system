@@ -166,6 +166,8 @@
   "propertyDetail.fields.status": "Estado",
   "propertyDetail.fields.type": "Tipo",
   "propertyDetail.fields.zipCode": "Codigo postal",
+  "propertyDetail.folderWarning.message": "Ese numero esta siendo utilizado con otra carpeta.",
+  "propertyDetail.folderWarning.title": "Numero de carpeta repetido",
   "propertyDetail.ownerModal.fields.address": "Domicilio",
   "propertyDetail.ownerModal.fields.city": "Localidad",
   "propertyDetail.ownerModal.fields.email": "E-mail",
