@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, Printer, Save, Trash2, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -113,9 +113,12 @@ function OwnerAccountModal({ contract, onClose }) {
         contractId: contract.id,
         date: today,
         items: items.map((item) => ({
-          amount: item.total,
+          administration: item.administration,
+          amount: item.amount,
           description: item.description,
           dueDate: item.date,
+          penalties: item.penalties,
+          total: item.total,
         })),
         kind: "OWNER_SETTLEMENT",
         number,
@@ -236,69 +239,72 @@ function MainDataTab({
   total,
 }) {
   const { t } = useTranslation()
+  const notesInputRef = useRef(null)
 
   return (
-    <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10" />
-            <TableHead>{t("ownerAccount.columns.date")}</TableHead>
-            <TableHead>{t("ownerAccount.columns.description")}</TableHead>
-            <TableHead className="text-right">
-              {t("ownerAccount.columns.amount")}
-            </TableHead>
-            <TableHead className="text-right">
-              {t("ownerAccount.columns.penalties")}
-            </TableHead>
-            <TableHead className="text-right">
-              {t("ownerAccount.columns.administration")}
-            </TableHead>
-            <TableHead className="text-right">
-              {t("ownerAccount.columns.total")}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.length === 0 ? (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="min-h-[330px] flex-1 overflow-auto">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell className="text-muted-foreground" colSpan={7}>
-                {t("table.empty")}
-              </TableCell>
+              <TableHead className="w-10" />
+              <TableHead>{t("ownerAccount.columns.date")}</TableHead>
+              <TableHead>{t("ownerAccount.columns.description")}</TableHead>
+              <TableHead className="text-right">
+                {t("ownerAccount.columns.amount")}
+              </TableHead>
+              <TableHead className="text-right">
+                {t("ownerAccount.columns.penalties")}
+              </TableHead>
+              <TableHead className="text-right">
+                {t("ownerAccount.columns.administration")}
+              </TableHead>
+              <TableHead className="text-right">
+                {t("ownerAccount.columns.total")}
+              </TableHead>
             </TableRow>
-          ) : null}
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>
-                <Button
-                  aria-label={t("actions.delete")}
-                  onClick={() => onRemoveItem(item.id)}
-                  size="icon-sm"
-                  variant="ghost"
-                >
-                  <Trash2 />
-                </Button>
-              </TableCell>
-              <TableCell>{item.date}</TableCell>
-              <TableCell>{item.description}</TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(item.amount)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(item.penalties)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(item.administration)}
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                {formatCurrency(item.total)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.length === 0 ? (
+              <TableRow>
+                <TableCell className="text-muted-foreground" colSpan={7}>
+                  {t("table.empty")}
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {items.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <Button
+                    aria-label={t("actions.delete")}
+                    onClick={() => onRemoveItem(item.id)}
+                    size="icon-sm"
+                    variant="ghost"
+                  >
+                    <Trash2 />
+                  </Button>
+                </TableCell>
+                <TableCell>{item.date}</TableCell>
+                <TableCell>{item.description}</TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(item.amount)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(item.penalties)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatCurrency(item.administration)}
+                </TableCell>
+                <TableCell className="text-right font-medium">
+                  {formatCurrency(item.total)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
 
-      <div className="mt-auto space-y-6 border-t border-dashed pt-4">
+      <div className="space-y-3 border-t border-dashed pt-3">
         <div className="ml-auto grid max-w-xl gap-3 text-sm font-semibold md:grid-cols-[auto_160px_auto_170px] md:items-center">
           <span className="text-right">{t("ownerAccount.totals.fees")}:</span>
           <Input readOnly value={formatCurrency(fees)} />
@@ -306,18 +312,28 @@ function MainDataTab({
           <Input readOnly value={formatCurrency(total)} />
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[80px_minmax(0,1fr)]">
-          <Label className="pt-2 font-semibold underline">
+        <div
+          className="relative z-10 grid max-w-3xl gap-2 md:grid-cols-[70px_minmax(0,1fr)]"
+          onMouseDown={() => notesInputRef.current?.focus()}
+        >
+          <Label
+            className="pt-1 text-xs font-semibold underline"
+            htmlFor="owner-account-notes"
+          >
             {t("ownerAccount.fields.notes")}:
           </Label>
           <textarea
-            className="min-h-24 border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+            className="relative z-10 block min-h-14 w-full cursor-text resize-none border border-input bg-background px-2 py-1.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+            id="owner-account-notes"
+            name="owner-account-notes"
             onChange={(event) => onNotesChange(event.target.value)}
+            onInput={(event) => onNotesChange(event.currentTarget.value)}
+            ref={notesInputRef}
             value={notes}
           />
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -511,7 +527,8 @@ function createOwnerAccountPdf({
   addText(490, y, 10, formatCurrency(total))
 
   if (notes.trim()) {
-    y -= 40
+    y = 115
+    addLine(50, y + 18, 545, y + 18)
     addText(50, y, 10, "Notas")
     y -= 18
     splitPdfText(notes, 88).forEach((line) => {
@@ -614,6 +631,7 @@ function loadOwnerAccountDraft(contractId) {
         description: item.description,
         id: item.id,
         penalties: Number(item.penalties || 0),
+        sourceReceiptId: item.sourceReceiptId,
       }),
     )
   } catch {
@@ -646,6 +664,7 @@ function createOwnerAccountItem({
   description,
   id,
   penalties = 0,
+  sourceReceiptId,
 }) {
   const administration = isRentInstallment(description) ? amount * 0.05 : 0
 
@@ -656,6 +675,7 @@ function createOwnerAccountItem({
     description,
     id,
     penalties,
+    sourceReceiptId,
     total: amount + penalties - administration,
   }
 }

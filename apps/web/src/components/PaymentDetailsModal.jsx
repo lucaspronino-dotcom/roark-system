@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Trash2, X } from "lucide-react"
+import { AlertCircle, ArrowLeft, Download, Trash2, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -53,13 +53,22 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
     }
   }, [contractId, kind, personName])
 
-  async function removeReceipt(receiptId) {
+  async function removeReceipt(payment) {
     setMessage("")
 
     try {
-      await deleteReceipt(receiptId)
+      await deleteReceipt(payment.id)
+
+      if (kind === "OWNER_SETTLEMENT") {
+        restoreOwnerAccountDraft(contractId, payment)
+      }
+
+      if (kind === "TENANT_SETTLEMENT") {
+        removeOwnerAccountDraftItemsForTenantReceipt(contractId, payment)
+      }
+
       setPayments((currentPayments) =>
-        currentPayments.filter((payment) => payment.id !== receiptId),
+        currentPayments.filter((currentPayment) => currentPayment.id !== payment.id),
       )
     } catch {
       setMessage("¡no puede eliminar un recibo que ya se ha liquidado al propietario!")
@@ -140,14 +149,27 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
                       {formatCurrency(payment.balance)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button
-                        aria-label={t("actions.delete")}
-                        onClick={() => removeReceipt(payment.id)}
-                        size="icon-sm"
-                        variant="ghost"
-                      >
-                        <Trash2 />
-                      </Button>
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          aria-label={t("actions.delete")}
+                          onClick={() => removeReceipt(payment)}
+                          size="icon-sm"
+                          title={
+                            payment.isDeleteBlocked
+                              ? "No se puede eliminar porque ya fue liquidado al propietario"
+                              : t("actions.delete")
+                          }
+                          variant="ghost"
+                        >
+                          <Trash2 />
+                        </Button>
+                        {payment.isDeleteBlocked ? (
+                          <AlertCircle
+                            aria-label="Recibo bloqueado"
+                            className="size-4 text-destructive"
+                          />
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -241,6 +263,85 @@ function formatCurrency(value) {
     minimumFractionDigits: 0,
     style: "currency",
   }).format(Number(value || 0))
+}
+
+function restoreOwnerAccountDraft(contractId, receipt) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  const restoredItems = getReceiptSnapshotItems(receipt).map((item, index) =>
+    createOwnerDraftItemFromSnapshot(item, `${receipt.id}-${index}`),
+  )
+
+  if (restoredItems.length === 0) {
+    return
+  }
+
+  const storageKey = `owner-account-draft:${contractId}`
+  const currentItems = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]")
+
+  window.localStorage.setItem(
+    storageKey,
+    JSON.stringify([...restoredItems, ...currentItems]),
+  )
+}
+
+function removeOwnerAccountDraftItemsForTenantReceipt(contractId, receipt) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  const storageKey = `owner-account-draft:${contractId}`
+  const currentItems = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]")
+  const receiptItems = getReceiptSnapshotItems(receipt)
+  const nextItems = currentItems.filter(
+    (item) =>
+      item.sourceReceiptId !== receipt.id &&
+      !isSameReceiptDraftItem(item, receiptItems),
+  )
+
+  window.localStorage.setItem(storageKey, JSON.stringify(nextItems))
+}
+
+function isSameReceiptDraftItem(draftItem, receiptItems) {
+  return receiptItems.some(
+    (receiptItem) =>
+      draftItem.date === receiptItem.dueDate &&
+      draftItem.description === receiptItem.description &&
+      Number(draftItem.amount || 0) === Number(receiptItem.amount || 0),
+  )
+}
+
+function getReceiptSnapshotItems(receipt) {
+  return Array.isArray(receipt.snapshot?.items) ? receipt.snapshot.items : []
+}
+
+function createOwnerDraftItemFromSnapshot(item, fallbackId) {
+  const amount = Number(item.amount || 0)
+  const penalties = Number(item.penalties || 0)
+  const isLegacySnapshot =
+    item.administration === undefined && item.penalties === undefined && item.total === undefined
+  const administration = isLegacySnapshot
+    ? 0
+    : item.administration === undefined
+      ? getDefaultAdministration(item.description, amount)
+      : Number(item.administration || 0)
+  const total = item.total === undefined ? amount + penalties - administration : Number(item.total || 0)
+
+  return {
+    administration,
+    amount,
+    date: item.dueDate,
+    description: item.description,
+    id: `restored-${fallbackId}`,
+    penalties,
+    total,
+  }
+}
+
+function getDefaultAdministration(description, amount) {
+  return /alquiler\s+cuota/i.test(description) ? amount * 0.05 : 0
 }
 
 export { PaymentDetailsModal }

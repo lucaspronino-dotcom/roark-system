@@ -1,5 +1,6 @@
 {
   "actions.back": "Volver",
+  "actions.accept": "Aceptar",
   "actions.choose": "Elegir...",
   "actions.close": "Cerrar",
   "actions.cancel": "Cancelar",
@@ -56,7 +57,9 @@
   "contractRecord.messages.confirmDelete": "Presiona confirmar para marcar este contrato como eliminado.",
   "contractRecord.messages.deleted": "Contrato marcado como eliminado.",
   "contractRecord.messages.downloaded": "Ficha del contrato descargada.",
+  "contractRecord.messages.confirmRenew": "¿Esta seguro que quiere renovar este contrato? Esta accion actualizara los datos historicos de la ficha.",
   "contractRecord.messages.renewed": "Contrato renovado hasta {{date}}.",
+  "contractRecord.renewModal.title": "Renovar contrato",
   "contractOwners.fields.bankAccountCbu": "Cuenta bancaria CBU",
   "contractOwners.fields.description": "Descripcion",
   "contractOwners.sections.mainData": "Datos principales",

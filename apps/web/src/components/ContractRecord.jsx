@@ -1,11 +1,9 @@
 import {
   ArrowLeft,
   CalendarDays,
-  Download,
   Home,
   Plus,
   RotateCcw,
-  Save,
   Trash2,
   User,
 } from "lucide-react"
@@ -24,11 +22,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  createContract,
-  deleteContract,
-  updateContract,
-} from "@/services/contractsService"
+import { deleteContract } from "@/services/contractsService"
 import { getProperties } from "@/services/propertiesService"
 import { getTenants } from "@/services/tenantsService"
 
@@ -77,7 +71,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isNewTenantOpen, setIsNewTenantOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isRenewConfirmationOpen, setIsRenewConfirmationOpen] = useState(false)
   const selectedProperty = properties.find((property) => property.id === form.propertyId)
   const selectedTenant = tenants.find((tenant) => tenant.id === form.tenantId)
   const propertyDisplayValue = selectedProperty?.address ?? contract.address ?? ""
@@ -195,63 +189,16 @@ function ContractRecord({ contract, onBack, onSaved }) {
   }
 
   function handleRenew() {
+    setIsRenewConfirmationOpen(true)
+  }
+
+  function confirmRenew() {
     const renewedEndDate = addMonths(form.endDate, 24)
+
     updateField("endDate", renewedEndDate)
     updateField("status", "ACTIVE")
+    setIsRenewConfirmationOpen(false)
     setMessage(t("contractRecord.messages.renewed", { date: renewedEndDate }))
-  }
-
-  function handleDownload() {
-    const content = [
-      t("contractRecord.title"),
-      `${t("entities.property")}: ${contract.address}`,
-      `${t("entities.tenant")}: ${contract.tenant}`,
-      `${t("contractRecord.fields.end")}: ${form.endDate}`,
-    ].join("\n")
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-
-    link.href = url
-    link.download = `contrato-${contract.folder}.txt`
-    link.click()
-    URL.revokeObjectURL(url)
-    setMessage(t("contractRecord.messages.downloaded"))
-  }
-
-  function handleResetAndExit() {
-    saveContract()
-  }
-
-  async function saveContract() {
-    setError("")
-    setIsSaving(true)
-
-    try {
-      const payload = {
-        folder: form.folder,
-        startDate: form.startDate,
-        endDate: form.endDate,
-        status: form.status,
-        propertyId: form.propertyId,
-        tenantId: form.tenantId,
-        ownerId: form.ownerId,
-      }
-
-      if (contract.id) {
-        await updateContract(contract.id, payload)
-      } else {
-        await createContract(payload)
-      }
-
-      setPendingDelete(false)
-      onSaved?.()
-      onBack()
-    } catch (apiError) {
-      setError(apiError.message)
-    } finally {
-      setIsSaving(false)
-    }
   }
 
   return (
@@ -496,12 +443,6 @@ function ContractRecord({ contract, onBack, onSaved }) {
           <ToolbarButton icon={RotateCcw} onClick={handleRenew}>
             {t("actions.renew")}
           </ToolbarButton>
-          <ToolbarButton icon={Download} onClick={handleDownload}>
-            {t("actions.download")}
-          </ToolbarButton>
-          <ToolbarButton disabled={isSaving} icon={Save} onClick={handleResetAndExit}>
-            {t("actions.resetAndExit")}
-          </ToolbarButton>
         </div>
       ) : null}
 
@@ -530,6 +471,14 @@ function ContractRecord({ contract, onBack, onSaved }) {
             setTenants((currentTenants) => [tenant, ...currentTenants])
             selectTenant(tenant.id)
           }}
+        />
+      ) : null}
+      {isRenewConfirmationOpen ? (
+        <ConfirmationModal
+          message={t("contractRecord.messages.confirmRenew")}
+          onAccept={confirmRenew}
+          onCancel={() => setIsRenewConfirmationOpen(false)}
+          title={t("contractRecord.renewModal.title")}
         />
       ) : null}
     </section>
@@ -1029,6 +978,33 @@ function loadContractRecordSetting(contractId, key, fallbackValue) {
   return (
     window.localStorage.getItem(`contract-record:${contractId}:${key}`) ??
     fallbackValue
+  )
+}
+
+function ConfirmationModal({ message, onAccept, onCancel, title }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="border-b">
+          <CardTitle className="text-lg font-semibold text-primary">
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-5">
+          <p className="text-sm text-foreground">{message}</p>
+          <div className="flex justify-end gap-2">
+            <Button onClick={onCancel} variant="outline">
+              {t("actions.cancel")}
+            </Button>
+            <Button onClick={onAccept}>
+              {t("actions.accept")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

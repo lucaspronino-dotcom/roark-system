@@ -18,6 +18,18 @@ class ReceiptItemDto {
 
   @IsNumber()
   amount!: number
+
+  @IsOptional()
+  @IsNumber()
+  administration?: number
+
+  @IsOptional()
+  @IsNumber()
+  penalties?: number
+
+  @IsOptional()
+  @IsNumber()
+  total?: number
 }
 
 export class CreateReceiptDto {

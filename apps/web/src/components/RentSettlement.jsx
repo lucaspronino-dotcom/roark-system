@@ -229,7 +229,7 @@ function RentSettlement({ contract, onBack }) {
         personName: contract.tenant,
         total,
       })
-      saveOwnerAccountDraft(contract.id, appliedItems)
+      saveOwnerAccountDraft(contract.id, appliedItems, receipt.id)
       setReceipts((currentReceipts) => [receipt, ...currentReceipts])
 
       if (settlementPdfUrl) {
@@ -753,7 +753,7 @@ function blobToBase64(blob) {
   })
 }
 
-function saveOwnerAccountDraft(contractId, appliedItems) {
+function saveOwnerAccountDraft(contractId, appliedItems, sourceReceiptId) {
   if (!contractId || typeof window === "undefined") {
     return
   }
@@ -763,17 +763,18 @@ function saveOwnerAccountDraft(contractId, appliedItems) {
   const createdAt = Date.now()
   const ownerItems = appliedItems.map((item, index) =>
     createOwnerAccountItem({
-      amount: Number(item.edit || 0),
-      date: item.dueDate,
-      description: item.description,
-      id: `${createdAt}-${index}`,
-    }),
+        amount: Number(item.edit || 0),
+        date: item.dueDate,
+        description: item.description,
+        id: `${createdAt}-${index}`,
+        sourceReceiptId,
+      }),
   )
 
   window.localStorage.setItem(key, JSON.stringify([...ownerItems, ...currentItems]))
 }
 
-function createOwnerAccountItem({ amount, date, description, id }) {
+function createOwnerAccountItem({ amount, date, description, id, sourceReceiptId }) {
   const administration = isRentInstallment(description) ? amount * 0.05 : 0
 
   return {
@@ -783,6 +784,7 @@ function createOwnerAccountItem({ amount, date, description, id }) {
     description,
     id,
     penalties: 0,
+    sourceReceiptId,
     total: amount - administration,
   }
 }

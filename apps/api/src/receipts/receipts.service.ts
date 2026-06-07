@@ -33,7 +33,23 @@ export class ReceiptsService {
       },
     })
 
-    return receipts.map(toReceiptListItem)
+    if (kind === ReceiptKind.TENANT_SETTLEMENT && contractId) {
+      const ownerReceipts = await this.prisma.receipt.findMany({
+        where: {
+          contractId,
+          kind: ReceiptKind.OWNER_SETTLEMENT,
+        },
+      })
+      const ownerReceiptPeriods = new Set(ownerReceipts.map(getReceiptPeriodKey))
+
+      return receipts.map((receipt) =>
+        toReceiptListItem(receipt, {
+          isDeleteBlocked: ownerReceiptPeriods.has(getReceiptPeriodKey(receipt)),
+        }),
+      )
+    }
+
+    return receipts.map((receipt) => toReceiptListItem(receipt))
   }
 
   async getNextNumber() {
@@ -46,9 +62,12 @@ export class ReceiptsService {
     const number = createReceiptDto.number ?? (await this.getNextReceiptNumber())
     const snapshot = {
       items: createReceiptDto.items.map((item) => ({
+        administration: item.administration,
         amount: item.amount,
         description: item.description,
         dueDate: item.dueDate,
+        penalties: item.penalties,
+        total: item.total,
       })),
       total: createReceiptDto.total,
     }
@@ -131,10 +150,14 @@ export class ReceiptsService {
   }
 }
 
-function toReceiptListItem(receipt: ReceiptListItem) {
+function toReceiptListItem(
+  receipt: ReceiptListItem,
+  options: { isDeleteBlocked?: boolean } = {},
+) {
   return {
     balance: receipt.balance,
     id: receipt.id,
+    isDeleteBlocked: options.isDeleteBlocked ?? false,
     paid: receipt.paid,
     pdfBase64: receipt.pdfBase64,
     receipt: String(receipt.number),

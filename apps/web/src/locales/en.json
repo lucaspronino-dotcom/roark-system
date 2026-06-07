@@ -1,5 +1,6 @@
 {
   "actions.back": "Back",
+  "actions.accept": "Accept",
   "actions.choose": "Choose...",
   "actions.close": "Close",
   "actions.cancel": "Cancel",
@@ -56,7 +57,9 @@
   "contractRecord.messages.confirmDelete": "Press confirm to mark this contract as deleted.",
   "contractRecord.messages.deleted": "Contract marked as deleted.",
   "contractRecord.messages.downloaded": "Contract record downloaded.",
+  "contractRecord.messages.confirmRenew": "Are you sure you want to renew this contract? This action will update the historical data in the record.",
   "contractRecord.messages.renewed": "Contract renewed until {{date}}.",
+  "contractRecord.renewModal.title": "Renew contract",
   "contractOwners.fields.bankAccountCbu": "Bank account CBU",
   "contractOwners.fields.description": "Description",
   "contractOwners.sections.mainData": "Main data",
