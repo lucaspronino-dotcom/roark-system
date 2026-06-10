@@ -1,5 +1,12 @@
 import { ContractStatus } from "@prisma/client"
-import { IsEnum, IsNotEmpty, IsString, IsUUID } from "class-validator"
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from "class-validator"
 
 export class CreateContractDto {
   @IsString()
@@ -25,4 +32,8 @@ export class CreateContractDto {
 
   @IsUUID()
   ownerId: string
+
+  @IsObject()
+  @IsOptional()
+  settings?: Record<string, unknown>
 }

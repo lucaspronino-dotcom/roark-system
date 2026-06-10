@@ -96,6 +96,7 @@ model Contract {
   propertyId String         @db.Uuid
   tenantId   String         @db.Uuid
   ownerId    String         @db.Uuid
+  settings   Json?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 

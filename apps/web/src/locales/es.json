@@ -60,6 +60,8 @@
   "contractRecord.messages.confirmRenew": "¿Esta seguro que quiere renovar este contrato? Esta accion actualizara los datos historicos de la ficha.",
   "contractRecord.messages.renewed": "Contrato renovado hasta {{date}}.",
   "contractRecord.renewModal.title": "Renovar contrato",
+  "contractRecord.saveModal.message": "Se guardo el contrato de: {{property}} - {{tenant}}. Numero de carpeta: {{folder}}.",
+  "contractRecord.saveModal.title": "Contrato guardado",
   "contractOwners.fields.bankAccountCbu": "Cuenta bancaria CBU",
   "contractOwners.fields.description": "Descripcion",
   "contractOwners.sections.mainData": "Datos principales",

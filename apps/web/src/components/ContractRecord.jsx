@@ -4,6 +4,7 @@ import {
   Home,
   Plus,
   RotateCcw,
+  Save,
   Trash2,
   User,
 } from "lucide-react"
@@ -22,8 +23,12 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { deleteContract } from "@/services/contractsService"
-import { getProperties } from "@/services/propertiesService"
+import {
+  createContract,
+  deleteContract,
+  updateContract,
+} from "@/services/contractsService"
+import { getProperties, updateProperty } from "@/services/propertiesService"
 import { getTenants } from "@/services/tenantsService"
 
 const tabKeys = [
@@ -43,9 +48,10 @@ const periodKeys = [
 
 function ContractRecord({ contract, onBack, onSaved }) {
   const { t } = useTranslation()
+  const contractSettings = getContractSettings(contract)
   const today = formatDateValue(new Date())
   const initialStartDate = contract.startDate || today
-  const initialInstallments = "24"
+  const initialInstallments = contractSettings.periods.installments
   const [activeTab, setActiveTab] = useState("mainData")
   const [form, setForm] = useState(() => ({
     folder: contract.folder ?? "",
@@ -58,16 +64,24 @@ function ContractRecord({ contract, onBack, onSaved }) {
   }))
   const [installments, setInstallments] = useState(initialInstallments)
   const [adjustmentInterval, setAdjustmentInterval] = useState(() =>
-    loadContractRecordSetting(contract.id, "adjustmentInterval", "4"),
+    contractSettings.periods.adjustmentInterval,
   )
   const [adjustmentType, setAdjustmentType] = useState(() =>
-    loadContractRecordSetting(contract.id, "adjustmentType", "ICL"),
+    contractSettings.periods.adjustmentType,
+  )
+  const [periodValues, setPeriodValues] = useState(contractSettings.periods.rows)
+  const [surchargeSettings, setSurchargeSettings] = useState(
+    contractSettings.surcharges,
   )
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
-  const [terminationDate, setTerminationDate] = useState("")
+  const [terminationDate, setTerminationDate] = useState(
+    contractSettings.termination.date ?? "",
+  )
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+  const [isSavingAndExiting, setIsSavingAndExiting] = useState(false)
+  const [savedContractSummary, setSavedContractSummary] = useState(null)
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isNewTenantOpen, setIsNewTenantOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
@@ -116,6 +130,12 @@ function ContractRecord({ contract, onBack, onSaved }) {
     saveContractRecordSetting(contract.id, "adjustmentType", adjustmentType)
   }, [adjustmentType, contract.id])
 
+  useEffect(() => {
+    Object.entries(surchargeSettings).forEach(([key, value]) => {
+      saveContractRecordSetting(contract.id, key, value)
+    })
+  }, [contract.id, surchargeSettings])
+
   function updateField(name, value) {
     setForm((currentForm) => ({ ...currentForm, [name]: value }))
   }
@@ -147,6 +167,22 @@ function ContractRecord({ contract, onBack, onSaved }) {
     setAdjustmentInterval(String(Math.min(12, Math.max(0, numericValue))))
   }
 
+  function updatePeriodValue(index, name, value) {
+    setPeriodValues((currentValues) => {
+      const nextValues = [...currentValues]
+      const nextValue = name === "rent" ? formatMoneyInput(value) : value
+
+      nextValues[index] = {
+        rent: "",
+        extras: "$ 0,00",
+        ...nextValues[index],
+        [name]: nextValue,
+      }
+
+      return nextValues
+    })
+  }
+
   function selectProperty(propertyId) {
     const nextProperty = properties.find((property) => property.id === propertyId)
     const nextOwnerId =
@@ -164,6 +200,13 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
   function selectTenant(tenantId) {
     setForm((currentForm) => ({ ...currentForm, tenantId }))
+  }
+
+  function updateSurchargeSetting(name, value) {
+    setSurchargeSettings((currentSettings) => ({
+      ...currentSettings,
+      [name]: value,
+    }))
   }
 
   function handleDelete() {
@@ -190,6 +233,61 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
   function handleRenew() {
     setIsRenewConfirmationOpen(true)
+  }
+
+  async function handleSaveAndExit() {
+    setError("")
+    setMessage("")
+    setIsSavingAndExiting(true)
+
+    try {
+      const assignedFolder = contract.id
+        ? form.folder
+        : getNextAvailableFolder(properties)
+      const settings = buildContractSettings({
+        adjustmentInterval,
+        adjustmentType,
+        installments,
+        periodRows,
+        periodValues,
+        surchargeSettings,
+        terminationDate,
+      })
+      const payload = {
+        endDate: form.endDate,
+        folder: assignedFolder,
+        ownerId: form.ownerId,
+        propertyId: form.propertyId,
+        settings,
+        startDate: form.startDate,
+        status: form.status,
+        tenantId: form.tenantId,
+      }
+      const currentProperty = properties.find(
+        (property) => property.id === form.propertyId,
+      )
+
+      if (form.propertyId && assignedFolder !== currentProperty?.folder) {
+        await updateProperty(form.propertyId, { folder: assignedFolder })
+      }
+
+      const savedContract = contract.id
+        ? await updateContract(contract.id, payload)
+        : await createContract(payload)
+
+      await onSaved?.()
+      setSavedContractSummary({
+        folder: savedContract.folder ?? assignedFolder,
+        id: savedContract.id,
+        property: savedContract.address ?? propertyDisplayValue,
+        propertyId: savedContract.propertyId ?? form.propertyId,
+        tenant: savedContract.tenant ?? tenantDisplayValue,
+      })
+    } catch (apiError) {
+      setError(apiError.message)
+    } finally {
+      setIsSavingAndExiting(false)
+    }
   }
 
   function confirmRenew() {
@@ -350,16 +448,27 @@ function ContractRecord({ contract, onBack, onSaved }) {
                   key={untilInstallment}
                 >
                   <Field
-                    defaultValue={index === 0 ? "$ 350.000,00" : ""}
                     label={t("contractRecord.fields.rentPeriod", {
                       period: getPeriodLabel(index, t),
                     })}
+                    onChange={(event) =>
+                      updatePeriodValue(index, "rent", event.target.value)
+                    }
+                    value={
+                      periodValues[index]?.rent ?? ""
+                    }
                   />
                   <Field
                     label={t("contractRecord.fields.untilInstallment")}
                     value={`${untilInstallment}`}
                   />
-                  <Field defaultValue="$ 0,00" label={t("contractRecord.fields.extras")} />
+                  <Field
+                    label={t("contractRecord.fields.extras")}
+                    onChange={(event) =>
+                      updatePeriodValue(index, "extras", event.target.value)
+                    }
+                    value={periodValues[index]?.extras ?? "$ 0,00"}
+                  />
                 </div>
               ))}
             </Section>
@@ -368,18 +477,48 @@ function ContractRecord({ contract, onBack, onSaved }) {
               <Section title={t("contractRecord.sections.surcharges")}>
                 <div className="max-w-[170px] space-y-3">
                   <Field
-                    defaultValue="1/1/2026"
+                    onChange={(event) =>
+                      updateSurchargeSetting("firstPaymentDate", event.target.value)
+                    }
+                    value={surchargeSettings.firstPaymentDate}
                     label={t("contractRecord.fields.firstPaymentDate")}
                   />
-                  <Field defaultValue="10" label={t("contractRecord.fields.graceDays")} />
-                  <Field defaultValue="1" label={t("contractRecord.fields.chargeFromDay")} />
-                  <Field defaultValue="10" label={t("contractRecord.fields.finalPayment")} />
                   <Field
-                    defaultValue="1,00%"
+                    onChange={(event) =>
+                      updateSurchargeSetting("graceDays", event.target.value)
+                    }
+                    value={surchargeSettings.graceDays}
+                    label={t("contractRecord.fields.graceDays")}
+                  />
+                  <Field
+                    onChange={(event) =>
+                      updateSurchargeSetting("chargeFromDay", event.target.value)
+                    }
+                    value={surchargeSettings.chargeFromDay}
+                    label={t("contractRecord.fields.chargeFromDay")}
+                  />
+                  <Field
+                    onChange={(event) =>
+                      updateSurchargeSetting("finalPayment", event.target.value)
+                    }
+                    value={surchargeSettings.finalPayment}
+                    label={t("contractRecord.fields.finalPayment")}
+                  />
+                  <Field
+                    onChange={(event) =>
+                      updateSurchargeSetting(
+                        "dailyPercentagePoints",
+                        event.target.value,
+                      )
+                    }
+                    value={surchargeSettings.dailyPercentagePoints}
                     label={t("contractRecord.fields.dailyPercentagePoints")}
                   />
                   <Field
-                    defaultValue="$0,00"
+                    onChange={(event) =>
+                      updateSurchargeSetting("fixedDailyPoints", event.target.value)
+                    }
+                    value={surchargeSettings.fixedDailyPoints}
                     label={t("contractRecord.fields.fixedDailyPoints")}
                   />
                 </div>
@@ -401,6 +540,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
               </Section>
             </div>
           </div>
+
         </CardContent>
       </Card>
       ) : null}
@@ -443,6 +583,13 @@ function ContractRecord({ contract, onBack, onSaved }) {
           <ToolbarButton icon={RotateCcw} onClick={handleRenew}>
             {t("actions.renew")}
           </ToolbarButton>
+          <ToolbarButton
+            disabled={isSavingAndExiting}
+            icon={Save}
+            onClick={handleSaveAndExit}
+          >
+            {t("actions.saveAndExit")}
+          </ToolbarButton>
         </div>
       ) : null}
 
@@ -481,8 +628,46 @@ function ContractRecord({ contract, onBack, onSaved }) {
           title={t("contractRecord.renewModal.title")}
         />
       ) : null}
+      {savedContractSummary ? (
+        <SavedContractModal
+          folder={savedContractSummary.folder}
+          onAccept={acceptSavedContract}
+          property={savedContractSummary.property}
+          tenant={savedContractSummary.tenant}
+        />
+      ) : null}
     </section>
   )
+
+  async function acceptSavedContract(nextFolder) {
+    const trimmedFolder = String(nextFolder ?? "").trim()
+    const finalFolder = trimmedFolder || savedContractSummary.folder
+
+    setError("")
+
+    try {
+      if (finalFolder !== savedContractSummary.folder) {
+        if (savedContractSummary.propertyId) {
+          await updateProperty(savedContractSummary.propertyId, {
+            folder: finalFolder,
+          })
+        }
+
+        if (savedContractSummary.id) {
+          await updateContract(savedContractSummary.id, {
+            folder: finalFolder,
+          })
+        }
+
+        await onSaved?.()
+      }
+
+      setSavedContractSummary(null)
+      onBack()
+    } catch (apiError) {
+      setError(apiError.message)
+    }
+  }
 }
 
 function TenantAndGuarantorsPanel({ contract, onBack }) {
@@ -970,7 +1155,74 @@ function getPeriodLabel(index, translate) {
   return periodKeys[index] ? translate(periodKeys[index]) : `${index + 1}to.`
 }
 
-function loadContractRecordSetting(contractId, key, fallbackValue) {
+function getContractSettings(contract) {
+  const settings = contract.settings ?? {}
+  const periods = settings.periods ?? {}
+  const surcharges = settings.surcharges ?? {}
+
+  return {
+    periods: {
+      adjustmentInterval:
+        periods.adjustmentInterval ??
+        getStoredContractSetting(contract.id, "adjustmentInterval", "4"),
+      adjustmentType:
+        periods.adjustmentType ??
+        getStoredContractSetting(contract.id, "adjustmentType", "ICL"),
+      installments: periods.installments ?? "24",
+      rows: Array.isArray(periods.rows) ? periods.rows : [],
+    },
+    surcharges: {
+      chargeFromDay:
+        surcharges.chargeFromDay ??
+        getStoredContractSetting(contract.id, "chargeFromDay", "1"),
+      dailyPercentagePoints:
+        surcharges.dailyPercentagePoints ??
+        getStoredContractSetting(contract.id, "dailyPercentagePoints", "1,00%"),
+      finalPayment:
+        surcharges.finalPayment ??
+        getStoredContractSetting(contract.id, "finalPayment", "10"),
+      firstPaymentDate:
+        surcharges.firstPaymentDate ??
+        getStoredContractSetting(contract.id, "firstPaymentDate", "1/1/2026"),
+      fixedDailyPoints:
+        surcharges.fixedDailyPoints ??
+        getStoredContractSetting(contract.id, "fixedDailyPoints", "$0,00"),
+      graceDays:
+        surcharges.graceDays ??
+        getStoredContractSetting(contract.id, "graceDays", "10"),
+    },
+    termination: settings.termination ?? {},
+  }
+}
+
+function buildContractSettings({
+  adjustmentInterval,
+  adjustmentType,
+  installments,
+  periodRows,
+  periodValues,
+  surchargeSettings,
+  terminationDate,
+}) {
+  return {
+    periods: {
+      adjustmentInterval,
+      adjustmentType,
+      installments,
+      rows: periodRows.map((untilInstallment, index) => ({
+        extras: periodValues[index]?.extras ?? "$ 0,00",
+        rent: periodValues[index]?.rent ?? "",
+        untilInstallment,
+      })),
+    },
+    surcharges: surchargeSettings,
+    termination: {
+      date: terminationDate,
+    },
+  }
+}
+
+function getStoredContractSetting(contractId, key, fallbackValue) {
   if (!contractId || typeof window === "undefined") {
     return fallbackValue
   }
@@ -979,6 +1231,34 @@ function loadContractRecordSetting(contractId, key, fallbackValue) {
     window.localStorage.getItem(`contract-record:${contractId}:${key}`) ??
     fallbackValue
   )
+}
+
+function getNextAvailableFolder(properties) {
+  const usedFolders = new Set(
+    properties
+      .map((property) => Number(property.folder))
+      .filter((folder) => Number.isFinite(folder)),
+  )
+  let nextFolder = 0
+
+  while (usedFolders.has(nextFolder)) {
+    nextFolder += 1
+  }
+
+  return String(nextFolder)
+}
+
+function formatMoneyInput(value) {
+  const digits = String(value ?? "").replace(/\D/g, "")
+
+  if (!digits) {
+    return ""
+  }
+
+  return `$ ${new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(Number(digits))}`
 }
 
 function ConfirmationModal({ message, onAccept, onCancel, title }) {
@@ -999,6 +1279,47 @@ function ConfirmationModal({ message, onAccept, onCancel, title }) {
               {t("actions.cancel")}
             </Button>
             <Button onClick={onAccept}>
+              {t("actions.accept")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function SavedContractModal({ folder, onAccept, property, tenant }) {
+  const { t } = useTranslation()
+  const [nextFolder, setNextFolder] = useState(folder)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="border-b">
+          <CardTitle className="text-lg font-semibold text-primary">
+            {t("contractRecord.saveModal.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-5">
+          <p className="text-sm text-foreground">
+            {t("contractRecord.saveModal.message", {
+              folder,
+              property,
+              tenant,
+            })}
+          </p>
+          <div className="space-y-1">
+            <Label htmlFor="saved-contract-folder">
+              {t("propertyDetail.fields.folder")}
+            </Label>
+            <Input
+              id="saved-contract-folder"
+              onChange={(event) => setNextFolder(event.target.value)}
+              value={nextFolder}
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => onAccept(nextFolder)}>
               {t("actions.accept")}
             </Button>
           </div>

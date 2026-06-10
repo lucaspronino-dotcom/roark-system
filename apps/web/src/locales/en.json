@@ -60,6 +60,8 @@
   "contractRecord.messages.confirmRenew": "Are you sure you want to renew this contract? This action will update the historical data in the record.",
   "contractRecord.messages.renewed": "Contract renewed until {{date}}.",
   "contractRecord.renewModal.title": "Renew contract",
+  "contractRecord.saveModal.message": "The contract for: {{property}} - {{tenant}} was saved. Folder number: {{folder}}.",
+  "contractRecord.saveModal.title": "Contract saved",
   "contractOwners.fields.bankAccountCbu": "Bank account CBU",
   "contractOwners.fields.description": "Description",
   "contractOwners.sections.mainData": "Main data",

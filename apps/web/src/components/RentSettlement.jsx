@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, Printer, Trash2, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ExtraConcepts } from "@/components/ExtraConcepts"
@@ -30,34 +30,6 @@ import {
 const settlementItems = [
   {
     dueDate: "1/6/2026",
-    description: "junio/2026 internet -",
-    edit: 12329,
-    penalty: "$ 0,00",
-    apply: true,
-  },
-  {
-    dueDate: "1/6/2026",
-    description: "junio/2026 gas -",
-    edit: 8414,
-    penalty: "$ 0,00",
-    apply: true,
-  },
-  {
-    dueDate: "1/6/2026",
-    description: "junio/2026 agua -",
-    edit: 1870,
-    penalty: "$ 0,00",
-    apply: true,
-  },
-  {
-    dueDate: "1/6/2026",
-    description: "junio/2026 luz -",
-    edit: 11122,
-    penalty: "$ 0,00",
-    apply: true,
-  },
-  {
-    dueDate: "1/6/2026",
     description: "Alquiler Cuota:4 junio-2026",
     edit: 260000,
     penalty: "$ 0,00",
@@ -65,23 +37,32 @@ const settlementItems = [
   },
 ]
 
-const initialRegularConcepts = [
-  { accountDescription: "junio/2026 luz -", detail: "luz", amount: "$ 11.122,00" },
-  { accountDescription: "junio/2026 agua -", detail: "agua", amount: "$ 1.870,00" },
-  { accountDescription: "junio/2026 gas -", detail: "gas", amount: "$ 8.414,00" },
-  { accountDescription: "junio/2026 internet -", detail: "internet", amount: "$ 12.329,00" },
-  {
-    accountDescription: "Alquiler Cuota:4 junio-2026",
-    detail: "honorarios inmobiliaria",
-    amount: "$ 260.000,00",
-  },
-]
-
 function RentSettlement({ contract, onBack }) {
   const { t } = useTranslation()
+  const todayDate = useMemo(() => new Date(), [])
+  const contractStartDate = useMemo(
+    () => parseEsDate(contract.startDate),
+    [contract.startDate],
+  )
+  const initialPeriodDate = useMemo(
+    () => getCurrentPeriodDate(contractStartDate, todayDate),
+    [contractStartDate, todayDate],
+  )
+  const initialRegularConcepts = useMemo(
+    () => loadRegularConcepts(contract.id),
+    [contract.id],
+  )
   const [activeTab, setActiveTab] = useState("account")
-  const [periodDate, setPeriodDate] = useState(() => parseEsDate(settlementItems[0].dueDate))
-  const [items, setItems] = useState(() => createPeriodItems(parseEsDate(settlementItems[0].dueDate)))
+  const [periodDate, setPeriodDate] = useState(() => initialPeriodDate)
+  const [items, setItems] = useState(() =>
+    createPeriodItems(
+      initialPeriodDate,
+      [],
+      contractStartDate,
+      initialRegularConcepts,
+      contract,
+    ),
+  )
   const [regularConcepts, setRegularConcepts] = useState(initialRegularConcepts)
   const [noteText, setNoteText] = useState("")
   const [notes, setNotes] = useState([])
@@ -90,11 +71,13 @@ function RentSettlement({ contract, onBack }) {
   const [settlementPdfUrl, setSettlementPdfUrl] = useState(null)
   const [settlementPdfTitle, setSettlementPdfTitle] = useState("")
   const [isSavingReceipt, setIsSavingReceipt] = useState(false)
-  const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
+  const currentDate = new Intl.DateTimeFormat("es-AR").format(todayDate)
+  const surchargeSettings = getContractSurchargeSettings(contract.id)
   const isPeriodLocked = hasReceiptForPeriod(receipts, periodDate)
   const visibleItems = isPeriodLocked ? [] : items
   const total = visibleItems.reduce(
-    (sum, item) => (item.apply ? sum + Number(item.edit || 0) : sum),
+    (sum, item) =>
+      item.apply ? sum + getItemTotal(item, surchargeSettings, todayDate) : sum,
     0,
   )
   const effectivePaidAmount = paidAmount ?? total
@@ -118,6 +101,15 @@ function RentSettlement({ contract, onBack }) {
 
       if (!ignore) {
         setReceipts(receipts)
+        setItems(
+          createPeriodItems(
+            periodDate,
+            receipts,
+            contractStartDate,
+            regularConcepts,
+            contract,
+          ),
+        )
       }
     }
 
@@ -126,7 +118,18 @@ function RentSettlement({ contract, onBack }) {
     return () => {
       ignore = true
     }
-  }, [contract.id, contract.tenant])
+  }, [
+    contract,
+    contract.id,
+    contract.tenant,
+    contractStartDate,
+    periodDate,
+    regularConcepts,
+  ])
+
+  useEffect(() => {
+    saveRegularConcepts(contract.id, regularConcepts)
+  }, [contract.id, regularConcepts])
 
   function updateItem(index, nextValues) {
     setItems((currentItems) =>
@@ -137,7 +140,16 @@ function RentSettlement({ contract, onBack }) {
   }
 
   function addItemToAccount(item) {
-    setItems((currentItems) => [...currentItems, item])
+    const nextItem = item.isRegularConcept
+      ? createRegularConceptItem(item, periodDate)
+      : item
+
+    setItems((currentItems) => [
+      ...currentItems.filter(
+        (currentItem) => currentItem.description !== nextItem.description,
+      ),
+      nextItem,
+    ])
     setActiveTab("account")
   }
 
@@ -149,8 +161,29 @@ function RentSettlement({ contract, onBack }) {
 
   function removeItemByDescription(description) {
     setItems((currentItems) =>
-      currentItems.filter((item) => item.description !== description),
+      currentItems.filter(
+        (item) =>
+          item.description !== description &&
+          getConceptName(item.description) !== description,
+      ),
     )
+  }
+
+  function focusSiblingEditInput(event, index) {
+    if (event.key !== "Tab") {
+      return
+    }
+
+    const nextIndex = event.shiftKey ? index - 1 : index + 1
+
+    if (nextIndex < 0 || nextIndex >= visibleItems.length) {
+      return
+    }
+
+    event.preventDefault()
+    document
+      .querySelector(`[data-settlement-edit-index="${nextIndex}"]`)
+      ?.focus()
   }
 
   function leaveNote() {
@@ -177,13 +210,14 @@ function RentSettlement({ contract, onBack }) {
       URL.revokeObjectURL(settlementPdfUrl)
     }
 
+    const printableItems = getPrintableItems(visibleItems, surchargeSettings, todayDate)
     const pdfBlob = createSettlementPdf({
       balance,
       balanceLabel,
       contract,
       date: currentDate,
       documentTitle: "LIQUIDACION ALQUILER",
-      items: visibleItems,
+      items: printableItems,
       notes,
       paidAmount: effectivePaidAmount,
       total,
@@ -199,14 +233,15 @@ function RentSettlement({ contract, onBack }) {
     try {
       const { number } = await getNextReceiptNumber()
       const documentTitle = `RECIBO N° ${number}`
-      const appliedItems = visibleItems.filter((item) => item.apply)
+      const printableItems = getPrintableItems(visibleItems, surchargeSettings, todayDate)
+      const appliedItems = printableItems.filter((item) => item.apply)
       const pdfBlob = createSettlementPdf({
         balance,
         balanceLabel,
         contract,
         date: currentDate,
         documentTitle,
-        items: visibleItems,
+        items: printableItems,
         notes,
         paidAmount: effectivePaidAmount,
         total,
@@ -221,6 +256,8 @@ function RentSettlement({ contract, onBack }) {
           amount: Number(item.edit || 0),
           description: item.description,
           dueDate: item.dueDate,
+          penalties: item.penaltyAmount,
+          total: item.totalAmount,
         })),
         kind: "TENANT_SETTLEMENT",
         number,
@@ -247,7 +284,15 @@ function RentSettlement({ contract, onBack }) {
     const nextPeriodDate = addMonths(periodDate, 1)
 
     setPeriodDate(nextPeriodDate)
-    setItems(createPeriodItems(nextPeriodDate))
+    setItems(
+      createPeriodItems(
+        nextPeriodDate,
+        receipts,
+        contractStartDate,
+        regularConcepts,
+        contract,
+      ),
+    )
     setPaidAmount(null)
     setActiveTab("account")
   }
@@ -280,9 +325,12 @@ function RentSettlement({ contract, onBack }) {
         </CardHeader>
         <CardContent className="space-y-6 pt-4">
           <div className="grid gap-4 md:grid-cols-[160px_220px_1fr_180px] md:items-end">
-            <Field defaultValue="10" label={t("rentSettlement.fields.graceDays")} />
             <Field
-              defaultValue="1"
+              defaultValue={surchargeSettings.graceDays}
+              label={t("rentSettlement.fields.graceDays")}
+            />
+            <Field
+              defaultValue={surchargeSettings.chargeFromDay}
               label={t("rentSettlement.fields.penaltyFromDay")}
             />
             <div />
@@ -378,27 +426,45 @@ function RentSettlement({ contract, onBack }) {
                           <Input
                             aria-label={`${t("rentSettlement.columns.edit")} ${item.description}`}
                             className="w-28 text-right"
+                            data-settlement-edit-index={index}
+                            onKeyDown={(event) =>
+                              focusSiblingEditInput(event, index)
+                            }
                             onChange={(event) =>
                               updateItem(index, {
-                                edit: Number(event.target.value),
+                                edit: parseNumber(event.target.value),
                               })
                             }
-                            value={item.edit}
+                            value={formatMoneyInput(item.edit)}
                             inputMode="numeric"
-                            min="0"
-                            step="1"
-                            type="number"
+                            type="text"
                           />
                         </TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(item.edit)}
                         </TableCell>
-                        <TableCell className="text-right">{item.penalty}</TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(
+                            getItemPenaltyAmount(item, surchargeSettings, todayDate),
+                          )}
+                        </TableCell>
                         <TableCell className="text-center">
-                          <input type="checkbox" />
+                          <input
+                            checked={item.penaltyApplied ?? false}
+                            onChange={(event) =>
+                              updateItem(index, {
+                                penaltyApplied: event.target.checked,
+                              })
+                            }
+                            type="checkbox"
+                          />
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(item.apply ? item.edit : 0)}
+                          {formatCurrency(
+                            item.apply
+                              ? getItemTotal(item, surchargeSettings, todayDate)
+                              : 0,
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <input
@@ -426,7 +492,7 @@ function RentSettlement({ contract, onBack }) {
                     emphasized
                     label={t("rentSettlement.totals.paid")}
                     onChange={(event) =>
-                      setPaidAmount(Number(event.target.value || 0))
+                      setPaidAmount(parseNumber(event.target.value))
                     }
                     rawValue={effectivePaidAmount}
                   />
@@ -523,6 +589,113 @@ function formatCurrency(value) {
   }).format(Number(value || 0))
 }
 
+function getPrintableItems(items, surchargeSettings, todayDate) {
+  return items.map((item) => {
+    const penaltyAmount = getItemPenaltyAmount(item, surchargeSettings, todayDate)
+
+    return {
+      ...item,
+      penaltyAmount,
+      totalAmount: Number(item.edit || 0) + penaltyAmount,
+    }
+  })
+}
+
+function getItemTotal(item, surchargeSettings, todayDate) {
+  return Number(item.edit || 0) + getItemPenaltyAmount(item, surchargeSettings, todayDate)
+}
+
+function getItemPenaltyAmount(item, surchargeSettings, todayDate) {
+  if (!item.penaltyApplied) {
+    return 0
+  }
+
+  const dueDate = parseEsDate(item.dueDate)
+  const graceDays = parseNumber(surchargeSettings.graceDays)
+  const chargeFromDay = parseNumber(surchargeSettings.chargeFromDay)
+  const dailyRate = parsePercentage(surchargeSettings.dailyPercentagePoints)
+  const daysOverdue = getDaysOverdue(dueDate, todayDate, graceDays, chargeFromDay)
+
+  if (daysOverdue <= 0 || dailyRate <= 0) {
+    return 0
+  }
+
+  return Math.round(Number(item.edit || 0) * dailyRate * daysOverdue)
+}
+
+function getDaysOverdue(dueDate, todayDate, graceDays, chargeFromDay) {
+  if (Number.isNaN(dueDate.getTime())) {
+    return 0
+  }
+
+  const firstPenaltyDate = new Date(dueDate)
+  const safeGraceDays = Math.max(0, Math.floor(graceDays || 0))
+  const safeChargeFromDay = Math.max(1, Math.floor(chargeFromDay || 1))
+
+  firstPenaltyDate.setDate(
+    firstPenaltyDate.getDate() + safeGraceDays + safeChargeFromDay - 1,
+  )
+
+  const normalizedToday = new Date(
+    todayDate.getFullYear(),
+    todayDate.getMonth(),
+    todayDate.getDate(),
+  )
+  const normalizedFirstPenaltyDate = new Date(
+    firstPenaltyDate.getFullYear(),
+    firstPenaltyDate.getMonth(),
+    firstPenaltyDate.getDate(),
+  )
+  const millisecondsPerDay = 1000 * 60 * 60 * 24
+
+  return Math.max(
+    0,
+    Math.floor(
+      (normalizedToday.getTime() - normalizedFirstPenaltyDate.getTime()) /
+        millisecondsPerDay,
+    ) + 1,
+  )
+}
+
+function parsePercentage(value) {
+  return parseNumber(value) / 100
+}
+
+function parseNumber(value) {
+  const normalizedValue = String(value ?? "")
+    .replace(/\$/g, "")
+    .replace(/%/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim()
+  const parsedValue = Number(normalizedValue)
+
+  return Number.isFinite(parsedValue) ? parsedValue : 0
+}
+
+function getContractSurchargeSettings(contractId) {
+  return {
+    chargeFromDay: loadContractSetting(contractId, "chargeFromDay", "1"),
+    dailyPercentagePoints: loadContractSetting(
+      contractId,
+      "dailyPercentagePoints",
+      "1,00%",
+    ),
+    graceDays: loadContractSetting(contractId, "graceDays", "10"),
+  }
+}
+
+function loadContractSetting(contractId, key, fallbackValue) {
+  if (!contractId || typeof window === "undefined") {
+    return fallbackValue
+  }
+
+  return (
+    window.localStorage.getItem(`contract-record:${contractId}:${key}`) ??
+    fallbackValue
+  )
+}
+
 function Field({ defaultValue, label }) {
   return (
     <div className="space-y-1">
@@ -553,9 +726,8 @@ function TotalBox({
         inputMode={editable ? "numeric" : undefined}
         onChange={onChange}
         readOnly={!editable}
-        step={editable ? "1" : undefined}
-        type={editable ? "number" : "text"}
-        value={editable ? rawValue : value}
+        type="text"
+        value={editable ? formatMoneyInput(rawValue) : value}
       />
     </div>
   )
@@ -631,7 +803,8 @@ function createSettlementPdf({
   addText(50, 700, 10, "Vence")
   addText(115, 700, 10, "Descripcion")
   addText(365, 700, 10, "Monto")
-  addText(445, 700, 10, "Total")
+  addText(425, 700, 10, "Punitorios")
+  addText(505, 700, 10, "Total")
   addLine(50, 692, 545, 692)
 
   let y = 675
@@ -641,7 +814,8 @@ function createSettlementPdf({
       addText(50, y, 9, item.dueDate)
       addText(115, y, 9, truncatePdfText(item.description, 42))
       addText(365, y, 9, formatCurrency(item.edit))
-      addText(445, y, 9, formatCurrency(item.edit))
+      addText(425, y, 9, formatCurrency(item.penaltyAmount))
+      addText(505, y, 9, formatCurrency(item.totalAmount))
       y -= 17
     })
 
@@ -801,14 +975,20 @@ function readOwnerAccountDraft(key) {
   }
 }
 
-function createPeriodItems(periodDate) {
-  const basePeriodDate = parseEsDate(settlementItems[0].dueDate)
-  const monthDifference = getMonthDifference(basePeriodDate, periodDate)
+function createPeriodItems(
+  periodDate,
+  receipts = [],
+  contractStartDate,
+  regularConcepts = [],
+  contract,
+) {
+  const installmentNumber = getInstallmentNumber(contractStartDate, periodDate)
+  const rentAmount = getRentAmountForInstallment(contract, installmentNumber)
   const monthName = getMonthName(periodDate)
   const year = periodDate.getFullYear()
   const dueDate = formatEsDate(periodDate)
 
-  return settlementItems.map((item) => {
+  const items = settlementItems.map((item) => {
     const isRent = isRentInstallment(item.description)
     const conceptName = getConceptName(item.description)
 
@@ -817,10 +997,35 @@ function createPeriodItems(periodDate) {
       apply: true,
       dueDate,
       description: isRent
-        ? `Alquiler Cuota:${4 + monthDifference} ${monthName}-${year}`
+        ? `Alquiler Cuota:${installmentNumber} ${monthName}-${year}`
         : `${monthName}/${year} ${conceptName} -`,
+      edit: isRent ? rentAmount : item.edit,
     }
   })
+  const regularConceptItems = regularConcepts.map((concept) =>
+    createRegularConceptItem(concept, periodDate),
+  )
+
+  const carryoverItem = createCarryoverBalanceItem(receipts, periodDate, dueDate)
+
+  const periodItems = [...regularConceptItems, ...items]
+
+  return carryoverItem ? [carryoverItem, ...periodItems] : periodItems
+}
+
+function createRegularConceptItem(concept, periodDate) {
+  const monthName = getMonthName(periodDate)
+  const year = periodDate.getFullYear()
+  const detail = concept.detail ?? getConceptName(concept.description)
+  const amount = concept.edit ?? concept.numericAmount ?? parseNumber(concept.amount)
+
+  return {
+    apply: true,
+    dueDate: formatEsDate(periodDate),
+    description: `${monthName}/${year} ${detail} -`,
+    edit: amount,
+    penalty: "$ 0,00",
+  }
 }
 
 function hasReceiptForPeriod(receipts, periodDate) {
@@ -843,10 +1048,70 @@ function getMonthKeyFromDate(date) {
   return `${date.getFullYear()}-${date.getMonth() + 1}`
 }
 
+function createCarryoverBalanceItem(receipts, periodDate, dueDate) {
+  const previousPeriodDate = addMonths(periodDate, -1)
+  const previousPeriodKey = getMonthKeyFromDate(previousPeriodDate)
+  const previousReceipt = receipts.find((receipt) => {
+    const firstItemDueDate = receipt.snapshot?.items?.[0]?.dueDate
+
+    return getMonthKey(firstItemDueDate ?? receipt.receiptDate) === previousPeriodKey
+  })
+  const previousBalance = Number(previousReceipt?.balance ?? 0)
+
+  if (previousBalance <= 0) {
+    return null
+  }
+
+  return {
+    apply: true,
+    dueDate,
+    description: `saldo del mes ${getMonthName(previousPeriodDate)}/${previousPeriodDate.getFullYear()}`,
+    edit: previousBalance,
+    penalty: "$ 0,00",
+  }
+}
+
 function parseEsDate(dateText) {
   const [day, month, year] = String(dateText).split("/").map(Number)
 
   return new Date(year, month - 1, day)
+}
+
+function getCurrentPeriodDate(contractStartDate, todayDate) {
+  if (Number.isNaN(contractStartDate.getTime())) {
+    return parseEsDate(settlementItems[0].dueDate)
+  }
+
+  const normalizedToday = new Date(
+    todayDate.getFullYear(),
+    todayDate.getMonth(),
+    todayDate.getDate(),
+  )
+  const currentMonthDueDate = createDateWithContractDay(
+    todayDate.getFullYear(),
+    todayDate.getMonth(),
+    contractStartDate.getDate(),
+  )
+
+  if (normalizedToday < contractStartDate) {
+    return new Date(contractStartDate)
+  }
+
+  if (normalizedToday < currentMonthDueDate) {
+    return createDateWithContractDay(
+      todayDate.getFullYear(),
+      todayDate.getMonth() - 1,
+      contractStartDate.getDate(),
+    )
+  }
+
+  return currentMonthDueDate
+}
+
+function createDateWithContractDay(year, monthIndex, day) {
+  const lastDayOfMonth = new Date(year, monthIndex + 1, 0).getDate()
+
+  return new Date(year, monthIndex, Math.min(day, lastDayOfMonth))
 }
 
 function formatEsDate(date) {
@@ -865,6 +1130,32 @@ function getMonthDifference(startDate, endDate) {
   )
 }
 
+function getInstallmentNumber(contractStartDate, periodDate) {
+  if (
+    Number.isNaN(contractStartDate.getTime()) ||
+    Number.isNaN(periodDate.getTime())
+  ) {
+    return 1
+  }
+
+  return Math.max(1, getMonthDifference(contractStartDate, periodDate) + 1)
+}
+
+function getRentAmountForInstallment(contract, installmentNumber) {
+  const periodRows = contract?.settings?.periods?.rows
+
+  if (!Array.isArray(periodRows) || periodRows.length === 0) {
+    return 0
+  }
+
+  const selectedPeriod =
+    periodRows.find(
+      (period) => Number(period.untilInstallment) >= installmentNumber,
+    ) ?? periodRows.at(-1)
+
+  return parseNumber(selectedPeriod?.rent)
+}
+
 function addMonths(date, amount) {
   return new Date(date.getFullYear(), date.getMonth() + amount, date.getDate())
 }
@@ -876,6 +1167,47 @@ function getConceptName(description) {
     .trim()
 
   return concept || description
+}
+
+function formatMoneyInput(value) {
+  const amount = parseNumber(value)
+
+  if (!amount) {
+    return ""
+  }
+
+  return formatCurrency(amount)
+}
+
+function getRegularConceptsKey(contractId) {
+  return `rent-settlement:${contractId}:regular-concepts`
+}
+
+function loadRegularConcepts(contractId) {
+  if (!contractId || typeof window === "undefined") {
+    return []
+  }
+
+  try {
+    const concepts = JSON.parse(
+      window.localStorage.getItem(getRegularConceptsKey(contractId)) ?? "[]",
+    )
+
+    return Array.isArray(concepts) ? concepts : []
+  } catch {
+    return []
+  }
+}
+
+function saveRegularConcepts(contractId, concepts) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(
+    getRegularConceptsKey(contractId),
+    JSON.stringify(concepts),
+  )
 }
 
 export { RentSettlement }

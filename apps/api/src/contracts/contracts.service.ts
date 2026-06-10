@@ -63,6 +63,7 @@ export class ContractsService {
           propertyId: createContractDto.propertyId,
           tenantId: createContractDto.tenantId,
           ownerId: createContractDto.ownerId,
+          settings: createContractDto.settings as Prisma.InputJsonValue,
         },
         include: contractInclude,
       })
@@ -91,6 +92,10 @@ export class ContractsService {
           propertyId: updateContractDto.propertyId,
           tenantId: updateContractDto.tenantId,
           ownerId: updateContractDto.ownerId,
+          settings:
+            updateContractDto.settings === undefined
+              ? undefined
+              : (updateContractDto.settings as Prisma.InputJsonValue),
         },
         include: contractInclude,
       })
@@ -136,6 +141,7 @@ function toContractListItem(contract: ContractWithRelations) {
     tenant: formatPersonName(contract.tenant.person),
     owner: formatPersonName(contract.owner.person),
     propertyId: contract.property.id,
+    settings: contract.settings,
     tenantId: contract.tenant.id,
     ownerId: contract.owner.id,
   }

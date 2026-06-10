@@ -1,4 +1,10 @@
-import { BookOpen, Save, Trash2 } from "lucide-react"
+import {
+  ArrowLeft,
+  BookOpen,
+  CalendarDays,
+  Save,
+  Trash2,
+} from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -19,18 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-const initialRegularConcepts = [
-  { accountDescription: "junio/2026 luz -", detail: "luz", amount: "$ 11.122,00" },
-  { accountDescription: "junio/2026 agua -", detail: "agua", amount: "$ 1.870,00" },
-  { accountDescription: "junio/2026 gas -", detail: "gas", amount: "$ 8.414,00" },
-  { accountDescription: "junio/2026 internet -", detail: "internet", amount: "$ 12.329,00" },
-  {
-    accountDescription: "Alquiler Cuota:4 junio-2026",
-    detail: "honorarios inmobiliaria",
-    amount: "$ 260.000,00",
-  },
-]
 
 const months = [
   "Ene",
@@ -55,7 +49,7 @@ function ExtraConcepts({
 }) {
   const { t } = useTranslation()
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
-  const [localConcepts, setLocalConcepts] = useState(initialRegularConcepts)
+  const [localConcepts, setLocalConcepts] = useState([])
   const [date, setDate] = useState(currentDate)
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
@@ -97,12 +91,14 @@ function ExtraConcepts({
   }
 
   function removeConcept(index) {
-    const conceptToRemove = concepts[index]
+    const conceptToRemove = visibleConcepts[index]
 
     setConcepts((currentConcepts) =>
       currentConcepts.filter((_, conceptIndex) => conceptIndex !== index),
     )
-    onRemoveFromAccount?.(conceptToRemove.accountDescription)
+    onRemoveFromAccount?.(
+      conceptToRemove?.accountDescription ?? conceptToRemove?.detail,
+    )
   }
 
   return (
@@ -272,13 +268,12 @@ function ExtraConcepts({
 function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
   const { t } = useTranslation()
   const isEditing = Boolean(concept)
+  const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
   const [conceptName, setConceptName] = useState(concept?.detail ?? "")
-  const [conceptAmount, setConceptAmount] = useState(
-    getNumericAmount(concept?.amount ?? "") || "",
-  )
+  const [conceptAmount, setConceptAmount] = useState(concept?.amount ?? "")
   const [tenantEffect, setTenantEffect] = useState("addToPayment")
   const [ownerEffect, setOwnerEffect] = useState("addToOwner")
-  const [startDate, setStartDate] = useState("5/12/2023")
+  const [startDate, setStartDate] = useState(currentDate)
   const [endDate, setEndDate] = useState("4/12/2026")
   const [monthMode, setMonthMode] = useState("all")
   const [selectedMonths, setSelectedMonths] = useState(months)
@@ -303,7 +298,7 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
 
   function handleSave() {
     const cleanConceptName = conceptName.trim()
-    const numericAmount = Number(conceptAmount)
+    const numericAmount = getNumericAmount(conceptAmount)
 
     if (!cleanConceptName) {
       setError(t("extraConcepts.validation.descriptionRequired"))
@@ -315,25 +310,26 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
       return
     }
 
-    const accountDescription = `junio/2026 ${cleanConceptName} -`
     const accountItem =
       tenantEffect === "addToPayment" || tenantEffect === "discountPayment"
         ? {
             apply: true,
-            description: accountDescription,
+            detail: cleanConceptName,
             dueDate: startDate,
             edit:
               tenantEffect === "discountPayment"
                 ? -numericAmount
                 : numericAmount,
+            isRegularConcept: true,
             penalty: "$ 0,00",
           }
         : null
 
     onSave?.({
-      accountDescription,
       amount: formatCurrency(numericAmount),
       detail: cleanConceptName,
+      numericAmount:
+        tenantEffect === "discountPayment" ? -numericAmount : numericAmount,
     }, accountItem)
     onClose()
   }
@@ -366,10 +362,9 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
             <Field label={t("extraConcepts.regularModal.amount")}>
               <Input
                 inputMode="numeric"
-                min="0"
-                onChange={(event) => setConceptAmount(event.target.value)}
-                step="1"
-                type="number"
+                onChange={(event) =>
+                  setConceptAmount(formatMoneyInput(event.target.value))
+                }
                 value={conceptAmount}
               />
             </Field>
@@ -425,12 +420,11 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
             </legend>
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-[180px_180px]">
-                <Field label={t("extraConcepts.regularModal.startDate")}>
-                  <Input
-                    onChange={(event) => setStartDate(event.target.value)}
-                    value={startDate}
-                  />
-                </Field>
+                <DatePickerField
+                  label={t("extraConcepts.regularModal.startDate")}
+                  onChange={setStartDate}
+                  value={startDate}
+                />
                 <Field label={t("extraConcepts.regularModal.endDate")}>
                   <Input
                     onChange={(event) => setEndDate(event.target.value)}
@@ -521,6 +515,117 @@ function RadioOption({ checked, defaultChecked = false, label, name, onChange })
   )
 }
 
+function DatePickerField({ label, onChange, value }) {
+  const { t } = useTranslation()
+  const selectedDate = parseDateValue(value) ?? new Date()
+  const [isOpen, setIsOpen] = useState(false)
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+  )
+
+  function selectDate(date) {
+    onChange(formatDateValue(date))
+    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1))
+    setIsOpen(false)
+  }
+
+  function moveMonth(amount) {
+    setVisibleMonth(
+      (currentMonth) =>
+        new Date(currentMonth.getFullYear(), currentMonth.getMonth() + amount, 1),
+    )
+  }
+
+  return (
+    <div className="relative space-y-1">
+      <Label>{label}</Label>
+      <div className="flex">
+        <Input
+          className="border-primary/30 bg-primary/10"
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        />
+        <Button
+          aria-label={t("contractRecord.calendar.open")}
+          className="border-l-0"
+          onClick={() => setIsOpen((currentValue) => !currentValue)}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <CalendarDays />
+        </Button>
+      </div>
+
+      {isOpen ? (
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 border bg-popover p-3 text-popover-foreground shadow-lg">
+          <div className="mb-3 flex items-center justify-between">
+            <Button
+              aria-label={t("contractRecord.calendar.previousMonth")}
+              onClick={() => moveMonth(-1)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeft />
+            </Button>
+            <div className="text-sm font-semibold capitalize">
+              {visibleMonth.toLocaleDateString("es-AR", {
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            <Button
+              aria-label={t("contractRecord.calendar.nextMonth")}
+              onClick={() => moveMonth(1)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeft className="rotate-180" />
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground">
+            {["do", "lu", "ma", "mi", "ju", "vi", "sa"].map((dayName) => (
+              <span key={dayName}>{dayName}</span>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {getCalendarDays(visibleMonth).map((date) => {
+              const isCurrentMonth = date.getMonth() === visibleMonth.getMonth()
+              const isSelected = isSameDay(date, selectedDate)
+
+              return (
+                <button
+                  className={[
+                    "h-8 text-sm transition-colors hover:bg-muted",
+                    isCurrentMonth ? "text-foreground" : "text-muted-foreground/50",
+                    isSelected
+                      ? "bg-primary text-primary-foreground hover:bg-primary"
+                      : "",
+                  ].join(" ")}
+                  key={date.toISOString()}
+                  onClick={() => selectDate(date)}
+                  type="button"
+                >
+                  {date.getDate()}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="mt-3 flex justify-center border-t pt-3">
+            <Button onClick={() => selectDate(new Date())} size="sm" type="button">
+              {t("contractRecord.calendar.today")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function getNumericAmount(value) {
   const normalizedValue = String(value)
     .replaceAll("$", "")
@@ -531,6 +636,16 @@ function getNumericAmount(value) {
   return Number(normalizedValue) || 0
 }
 
+function formatMoneyInput(value) {
+  const digits = String(value ?? "").replace(/\D/g, "")
+
+  if (!digits) {
+    return ""
+  }
+
+  return formatCurrency(Number(digits))
+}
+
 function formatCurrency(value) {
   return new Intl.NumberFormat("es-AR", {
     currency: "ARS",
@@ -538,6 +653,44 @@ function formatCurrency(value) {
     minimumFractionDigits: 0,
     style: "currency",
   }).format(Number(value || 0))
+}
+
+function parseDateValue(value) {
+  const [day, month, year] = String(value).split("/").map(Number)
+  const date = new Date(year, month - 1, day)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatDateValue(date) {
+  return new Intl.DateTimeFormat("es-AR").format(date)
+}
+
+function getCalendarDays(monthDate) {
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const startDate = new Date(firstDay)
+  const days = []
+
+  startDate.setDate(firstDay.getDate() - firstDay.getDay())
+
+  for (let dayIndex = 0; dayIndex < 42; dayIndex += 1) {
+    const date = new Date(startDate)
+
+    date.setDate(startDate.getDate() + dayIndex)
+    days.push(date)
+  }
+
+  return days
+}
+
+function isSameDay(firstDate, secondDate) {
+  return (
+    firstDate.getDate() === secondDate.getDate() &&
+    firstDate.getMonth() === secondDate.getMonth() &&
+    firstDate.getFullYear() === secondDate.getFullYear()
+  )
 }
 
 export { ExtraConcepts }
