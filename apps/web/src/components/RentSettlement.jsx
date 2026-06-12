@@ -244,7 +244,9 @@ function RentSettlement({ contract, onBack }) {
         items: printableItems,
         notes,
         paidAmount: effectivePaidAmount,
+        receiptNumber: number,
         total,
+        variant: "receipt",
       })
       const pdfBase64 = await blobToBase64(pdfBlob)
 
@@ -776,16 +778,30 @@ function createSettlementPdf({
   items,
   notes,
   paidAmount,
+  receiptNumber,
   total,
+  variant = "settlement",
 }) {
   const lines = []
 
-  function addText(x, y, size, text) {
+  function addText(x, y, size, text, options = {}) {
     lines.push("BT")
-    lines.push(`/F1 ${size} Tf`)
+    lines.push(`/${options.bold ? "F2" : "F1"} ${size} Tf`)
     lines.push(`${x} ${y} Td`)
     lines.push(`(${escapePdfText(text)}) Tj`)
     lines.push("ET")
+  }
+
+  function addTextRight(x, y, size, text, options = {}) {
+    const textWidth = getApproximateTextWidth(text, size, options.bold)
+
+    addText(x - textWidth, y, size, text, options)
+  }
+
+  function addTextCentered(x, y, size, text, options = {}) {
+    const textWidth = getApproximateTextWidth(text, size, options.bold)
+
+    addText(x - textWidth / 2, y, size, text, options)
   }
 
   function addLine(x1, y1, x2, y2) {
@@ -794,6 +810,40 @@ function createSettlementPdf({
     lines.push("S")
   }
 
+  function addRect(x, y, width, height) {
+    lines.push(`${x} ${y} ${width} ${height} re`)
+    lines.push("S")
+  }
+
+  function addWrappedText(x, y, size, text, maxLength, lineHeight = 12) {
+    let nextY = y
+
+    splitPdfText(text, maxLength).forEach((line) => {
+      addText(x, nextY, size, line)
+      nextY -= lineHeight
+    })
+
+    return nextY
+  }
+
+  if (variant === "receipt") {
+    drawTenantReceiptPdf({
+      addLine,
+      addRect,
+      addText,
+      addTextCentered,
+      addTextRight,
+      addWrappedText,
+      balance,
+      contract,
+      date,
+      items,
+      notes,
+      paidAmount,
+      receiptNumber,
+      total,
+    })
+  } else {
   addText(50, 800, 18, documentTitle)
   addLine(50, 790, 545, 790)
   addText(50, 765, 10, `Propiedad: ${contract.address}`)
@@ -841,14 +891,16 @@ function createSettlementPdf({
       })
     })
   }
+  }
 
   const stream = lines.join("\n")
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 6 0 R >> >> /Contents 5 0 R >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
   ]
 
   let pdf = "%PDF-1.4\n"
@@ -868,6 +920,256 @@ function createSettlementPdf({
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
 
   return new Blob([pdf], { type: "application/pdf" })
+}
+
+function drawTenantReceiptPdf({
+  addLine,
+  addRect,
+  addText,
+  addTextCentered,
+  addTextRight,
+  addWrappedText,
+  balance,
+  contract,
+  date,
+  items,
+  notes,
+  paidAmount,
+  receiptNumber,
+  total,
+}) {
+  const appliedItems = items.filter((item) => item.apply)
+  const ownerName = contract.owner || ""
+  const tenantName = contract.tenant || ""
+  const address = contract.address || ""
+  const receiptText = createReceiptConceptText({
+    address,
+    amount: total,
+    ownerName,
+    tenantName,
+  })
+
+  addRect(18, 746, 560, 84)
+  addLine(300, 746, 300, 830)
+  addRect(285, 808, 30, 22)
+  addTextCentered(300, 813, 17, "X", { bold: true })
+  addTextCentered(145, 803, 24, "ROARK", { bold: true })
+  addTextCentered(145, 788, 10, "PROPIEDADES", { bold: true })
+  addTextCentered(145, 770, 8, "Inmobiliaria Roark")
+  addTextCentered(145, 756, 7, "Av. Sarmiento 3165 - Olavarria - buenos aires")
+  addTextCentered(145, 746, 7, "2284458582")
+  addText(318, 814, 6, "DOCUMENTO NO VALIDO COMO FACTURA")
+  addTextRight(565, 814, 12, "ORIGINAL", { bold: true })
+  addText(438, 792, 8, "Fecha:")
+  addRect(488, 786, 80, 14)
+  addTextRight(562, 790, 8, date)
+  addText(438, 775, 8, "Recibo:")
+  addRect(488, 769, 80, 14)
+  addTextRight(562, 773, 8, String(receiptNumber ?? ""))
+
+  addRect(18, 726, 560, 16)
+  addTextCentered(
+    298,
+    731,
+    11,
+    "RECIBO POR CUENTA Y ORDEN DE TERCEROS",
+    { bold: true },
+  )
+
+  addRect(18, 689, 560, 31)
+  addText(35, 707, 7, "LOCADOR:", { bold: true })
+  addText(80, 707, 7, `${ownerName} - CUIT:`)
+  addText(315, 707, 7, "LOCATARIO:", { bold: true })
+  addText(365, 707, 7, tenantName)
+
+  addRect(18, 639, 560, 44)
+  addWrappedText(22, 670, 7.4, receiptText.toUpperCase(), 120, 10)
+
+  const tableTop = 625
+  addText(28, tableTop, 7, "Vence")
+  addText(92, tableTop, 7, "Descripcion")
+  addTextRight(410, tableTop, 7, "Monto")
+  addTextRight(480, tableTop, 7, "Punit.")
+  addTextRight(555, tableTop, 7, "Total")
+  addLine(22, tableTop - 5, 575, tableTop - 5)
+
+  let y = tableTop - 19
+  appliedItems.forEach((item) => {
+    addText(22, y, 7, item.dueDate)
+    addText(92, y, 7, truncatePdfText(item.description, 58))
+    addTextRight(410, y, 7, formatCurrency(item.edit))
+    addTextRight(480, y, 7, formatCurrency(item.penaltyAmount))
+    addTextRight(555, y, 7, formatCurrency(item.totalAmount))
+    y -= 14
+  })
+
+  addLine(22, y + 4, 555, y + 4)
+  y -= 10
+  addTextRight(430, y, 9, "Monto a Abonar:")
+  addTextRight(555, y, 9, formatCurrency(total))
+  y -= 28
+  addTextRight(458, y, 10, "TOTAL ABONADO:", { bold: true })
+  addRect(462, y - 5, 112, 16)
+  addTextRight(568, y, 10, formatCurrency(paidAmount), { bold: true })
+  y -= 22
+  addTextRight(458, y, 10, "Saldo:", { bold: true })
+  addRect(462, y - 5, 112, 16)
+  addTextRight(568, y, 10, formatCurrency(balance), { bold: true })
+
+  addText(25, 42, 7, "Notas")
+  addLine(25, 39, 50, 39)
+
+  if (notes.length > 0) {
+    let noteY = 28
+
+    notes.forEach((note) => {
+      splitPdfText(note, 115).forEach((line) => {
+        addText(25, noteY, 7, line)
+        noteY -= 10
+      })
+    })
+  }
+}
+
+function createReceiptConceptText({ address, amount, ownerName, tenantName }) {
+  const amountWords = numberToSpanishWords(amount, "pesos")
+
+  return [
+    `Por mandato del locador ${ownerName || ""} recibi del locatario ${tenantName || ""}`,
+    `la suma de ${amountWords}`,
+    `por el alquiler de una propiedad que ocupa en la calle ${address || ""}.`,
+  ]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function numberToSpanishWords(value, currency) {
+  const numericValue = Number(value)
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return `cero ${currency}`
+  }
+
+  return `${integerToSpanishWords(Math.trunc(numericValue))} ${currency}`
+}
+
+function integerToSpanishWords(value) {
+  if (value === 0) {
+    return "cero"
+  }
+
+  if (value < 0) {
+    return `menos ${integerToSpanishWords(Math.abs(value))}`
+  }
+
+  if (value < 1000) {
+    return hundredsToSpanishWords(value)
+  }
+
+  if (value < 1_000_000) {
+    const thousands = Math.trunc(value / 1000)
+    const remainder = value % 1000
+    const thousandsText =
+      thousands === 1 ? "mil" : `${hundredsToSpanishWords(thousands)} mil`
+
+    return [thousandsText, remainder ? hundredsToSpanishWords(remainder) : ""]
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  const millions = Math.trunc(value / 1_000_000)
+  const remainder = value % 1_000_000
+  const millionsText =
+    millions === 1
+      ? "un millon"
+      : `${integerToSpanishWords(millions)} millones`
+
+  return [millionsText, remainder ? integerToSpanishWords(remainder) : ""]
+    .filter(Boolean)
+    .join(" ")
+}
+
+function hundredsToSpanishWords(value) {
+  const units = [
+    "",
+    "uno",
+    "dos",
+    "tres",
+    "cuatro",
+    "cinco",
+    "seis",
+    "siete",
+    "ocho",
+    "nueve",
+    "diez",
+    "once",
+    "doce",
+    "trece",
+    "catorce",
+    "quince",
+    "dieciseis",
+    "diecisiete",
+    "dieciocho",
+    "diecinueve",
+    "veinte",
+    "veintiuno",
+    "veintidos",
+    "veintitres",
+    "veinticuatro",
+    "veinticinco",
+    "veintiseis",
+    "veintisiete",
+    "veintiocho",
+    "veintinueve",
+  ]
+  const tens = {
+    30: "treinta",
+    40: "cuarenta",
+    50: "cincuenta",
+    60: "sesenta",
+    70: "setenta",
+    80: "ochenta",
+    90: "noventa",
+  }
+  const hundreds = {
+    100: "cien",
+    200: "doscientos",
+    300: "trescientos",
+    400: "cuatrocientos",
+    500: "quinientos",
+    600: "seiscientos",
+    700: "setecientos",
+    800: "ochocientos",
+    900: "novecientos",
+  }
+
+  if (value < 30) {
+    return units[value]
+  }
+
+  if (value < 100) {
+    const ten = Math.trunc(value / 10) * 10
+    const unit = value % 10
+
+    return unit ? `${tens[ten]} y ${units[unit]}` : tens[ten]
+  }
+
+  if (hundreds[value]) {
+    return hundreds[value]
+  }
+
+  const hundred = Math.trunc(value / 100) * 100
+  const remainder = value % 100
+  const hundredText = hundred === 100 ? "ciento" : hundreds[hundred]
+
+  return `${hundredText} ${hundredsToSpanishWords(remainder)}`
+}
+
+function getApproximateTextWidth(value, size, bold = false) {
+  const factor = bold ? 0.58 : 0.52
+
+  return stripPdfText(value).length * size * factor
 }
 
 function escapePdfText(value) {

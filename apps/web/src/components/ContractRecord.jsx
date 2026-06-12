@@ -8,7 +8,7 @@ import {
   Trash2,
   User,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -52,6 +52,11 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const today = formatDateValue(new Date())
   const initialStartDate = contract.startDate || today
   const initialInstallments = contractSettings.periods.installments
+  const initialAdjustmentInterval = contractSettings.periods.adjustmentInterval
+  const initialAdjustmentType = contractSettings.periods.adjustmentType
+  const initialPeriodValues = contractSettings.periods.rows
+  const initialSurchargeSettings = contractSettings.surcharges
+  const initialTerminationDate = contractSettings.termination.date ?? ""
   const [activeTab, setActiveTab] = useState("mainData")
   const [form, setForm] = useState(() => ({
     folder: contract.folder ?? "",
@@ -64,24 +69,23 @@ function ContractRecord({ contract, onBack, onSaved }) {
   }))
   const [installments, setInstallments] = useState(initialInstallments)
   const [adjustmentInterval, setAdjustmentInterval] = useState(() =>
-    contractSettings.periods.adjustmentInterval,
+    initialAdjustmentInterval,
   )
   const [adjustmentType, setAdjustmentType] = useState(() =>
-    contractSettings.periods.adjustmentType,
+    initialAdjustmentType,
   )
-  const [periodValues, setPeriodValues] = useState(contractSettings.periods.rows)
+  const [periodValues, setPeriodValues] = useState(initialPeriodValues)
   const [surchargeSettings, setSurchargeSettings] = useState(
-    contractSettings.surcharges,
+    initialSurchargeSettings,
   )
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
-  const [terminationDate, setTerminationDate] = useState(
-    contractSettings.termination.date ?? "",
-  )
+  const [terminationDate, setTerminationDate] = useState(initialTerminationDate)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [isSavingAndExiting, setIsSavingAndExiting] = useState(false)
   const [savedContractSummary, setSavedContractSummary] = useState(null)
+  const [isUnsavedChangesOpen, setIsUnsavedChangesOpen] = useState(false)
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isNewTenantOpen, setIsNewTenantOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
@@ -93,6 +97,57 @@ function ContractRecord({ contract, onBack, onSaved }) {
     ? formatPersonName(selectedTenant.person)
     : contract.tenant ?? ""
   const periodRows = getPeriodRows(Number(installments), Number(adjustmentInterval))
+  const initialSnapshot = useMemo(
+    () =>
+      getContractRecordSnapshot({
+        adjustmentInterval: initialAdjustmentInterval,
+        adjustmentType: initialAdjustmentType,
+        form: {
+          folder: contract.folder ?? "",
+          startDate: initialStartDate,
+          endDate:
+            contract.end || calculateEndDate(initialStartDate, initialInstallments),
+          status: contract.status === "Vencido" ? "EXPIRED" : "ACTIVE",
+          propertyId: contract.propertyId ?? "",
+          tenantId: contract.tenantId ?? "",
+          ownerId: contract.ownerId ?? "",
+        },
+        installments: initialInstallments,
+        periodRows: getPeriodRows(
+          Number(initialInstallments),
+          Number(initialAdjustmentInterval),
+        ),
+        periodValues: initialPeriodValues,
+        surchargeSettings: initialSurchargeSettings,
+        terminationDate: initialTerminationDate,
+      }),
+    [
+      contract.end,
+      contract.folder,
+      contract.ownerId,
+      contract.propertyId,
+      contract.status,
+      contract.tenantId,
+      initialAdjustmentInterval,
+      initialAdjustmentType,
+      initialInstallments,
+      initialPeriodValues,
+      initialStartDate,
+      initialSurchargeSettings,
+      initialTerminationDate,
+    ],
+  )
+  const currentSnapshot = getContractRecordSnapshot({
+    adjustmentInterval,
+    adjustmentType,
+    form,
+    installments,
+    periodRows,
+    periodValues,
+    surchargeSettings,
+    terminationDate,
+  })
+  const hasUnsavedChanges = currentSnapshot !== initialSnapshot
 
   useEffect(() => {
     let ignore = false
@@ -235,6 +290,15 @@ function ContractRecord({ contract, onBack, onSaved }) {
     setIsRenewConfirmationOpen(true)
   }
 
+  function handleBack() {
+    if (hasUnsavedChanges) {
+      setIsUnsavedChangesOpen(true)
+      return
+    }
+
+    onBack()
+  }
+
   async function handleSaveAndExit() {
     setError("")
     setMessage("")
@@ -307,7 +371,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
             {t("contractRecord.title")}
           </CardTitle>
           <CardAction>
-            <Button onClick={onBack} size="sm" variant="outline">
+            <Button onClick={handleBack} size="sm" variant="outline">
               <ArrowLeft />
               {t("actions.back")}
             </Button>
@@ -626,6 +690,14 @@ function ContractRecord({ contract, onBack, onSaved }) {
           onAccept={confirmRenew}
           onCancel={() => setIsRenewConfirmationOpen(false)}
           title={t("contractRecord.renewModal.title")}
+        />
+      ) : null}
+      {isUnsavedChangesOpen ? (
+        <UnsavedChangesModal
+          isSaving={isSavingAndExiting}
+          onCancel={() => setIsUnsavedChangesOpen(false)}
+          onDiscard={onBack}
+          onSave={handleSaveAndExit}
         />
       ) : null}
       {savedContractSummary ? (
@@ -1222,6 +1294,40 @@ function buildContractSettings({
   }
 }
 
+function getContractRecordSnapshot({
+  adjustmentInterval,
+  adjustmentType,
+  form,
+  installments,
+  periodRows,
+  periodValues,
+  surchargeSettings,
+  terminationDate,
+}) {
+  return JSON.stringify({
+    adjustmentInterval: String(adjustmentInterval ?? ""),
+    adjustmentType: String(adjustmentType ?? ""),
+    form: {
+      endDate: form.endDate ?? "",
+      folder: form.folder ?? "",
+      ownerId: form.ownerId ?? "",
+      propertyId: form.propertyId ?? "",
+      startDate: form.startDate ?? "",
+      status: form.status ?? "",
+      tenantId: form.tenantId ?? "",
+    },
+    settings: buildContractSettings({
+      adjustmentInterval,
+      adjustmentType,
+      installments,
+      periodRows,
+      periodValues,
+      surchargeSettings,
+      terminationDate,
+    }),
+  })
+}
+
 function getStoredContractSetting(contractId, key, fallbackValue) {
   if (!contractId || typeof window === "undefined") {
     return fallbackValue
@@ -1280,6 +1386,38 @@ function ConfirmationModal({ message, onAccept, onCancel, title }) {
             </Button>
             <Button onClick={onAccept}>
               {t("actions.accept")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function UnsavedChangesModal({ isSaving, onCancel, onDiscard, onSave }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="border-b">
+          <CardTitle className="text-lg font-semibold text-primary">
+            {t("contractRecord.unsavedChanges.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-5">
+          <p className="text-sm text-foreground">
+            {t("contractRecord.unsavedChanges.message")}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={onCancel} variant="outline">
+              {t("actions.cancel")}
+            </Button>
+            <Button onClick={onDiscard} variant="secondary">
+              {t("contractRecord.unsavedChanges.discard")}
+            </Button>
+            <Button disabled={isSaving} onClick={onSave}>
+              {t("contractRecord.unsavedChanges.save")}
             </Button>
           </div>
         </CardContent>
