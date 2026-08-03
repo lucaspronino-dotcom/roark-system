@@ -37,7 +37,7 @@ function IndependentReceiptModal({ onClose }) {
     }
 
     if (Number.isFinite(numericCopies)) {
-      setCopies(String(Math.min(Math.max(numericCopies, 1), 3)))
+	      setCopies(String(Math.min(Math.max(numericCopies, 1), 1)))
     }
   }
 
@@ -101,7 +101,7 @@ function IndependentReceiptModal({ onClose }) {
                   <Label>{t("independentReceipt.fields.copies")}</Label>
                   <Input
                     inputMode="numeric"
-                    max="3"
+	                    max="1"
                     min="1"
                     onChange={handleCopiesChange}
                     type="number"
@@ -425,7 +425,7 @@ function createIndependentReceiptPdf({
   }
 
   const copyCount = hasDuplicate
-    ? Math.min(Math.max(Number(copies) || 1, 1), 3)
+    ? Math.min(Math.max(Number(copies) || 1, 1), 1)
     : 0
   const totalReceipts = copyCount + 1
   const receiptHeight = Math.min(345, Math.floor(760 / totalReceipts))

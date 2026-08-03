@@ -14,24 +14,36 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NewOwnerModal } from "@/components/NewOwnerModal"
 import { getOwners } from "@/services/ownersService"
-import { createProperty } from "@/services/propertiesService"
+import { createProperty, getProperties } from "@/services/propertiesService"
 
 const initialForm = {
   folder: "",
-  type: "Vivienda",
+  type: "Casa",
   status: "En alquiler 24M",
   address: "",
   city: "",
   ownerId: "",
   participation: "100",
-  administration: "0",
+  administration: "5%",
   commission: "0",
 }
+
+const propertyTypes = [
+  "Casa",
+  "Casa con local",
+  "Chacra",
+  "Cochera",
+  "Departamento",
+  "Local",
+  "Quinta",
+  "Terreno",
+]
 
 function NewPropertyModal({ onClose, onSaved }) {
   const { t } = useTranslation()
   const [form, setForm] = useState(initialForm)
   const [owners, setOwners] = useState([])
+  const [properties, setProperties] = useState([])
   const [error, setError] = useState("")
   const [isLoadingOwners, setIsLoadingOwners] = useState(true)
   const [isNewOwnerOpen, setIsNewOwnerOpen] = useState(false)
@@ -40,14 +52,18 @@ function NewPropertyModal({ onClose, onSaved }) {
   useEffect(() => {
     let ignore = false
 
-    loadOwners()
+    loadOptions()
 
-    async function loadOwners() {
+    async function loadOptions() {
       try {
-        const apiOwners = await getOwners()
+        const [apiOwners, apiProperties] = await Promise.all([
+          getOwners(),
+          getProperties(),
+        ])
 
         if (!ignore) {
           setOwners(apiOwners)
+          setProperties(apiProperties)
           setError("")
         }
       } catch (apiError) {
@@ -81,8 +97,9 @@ function NewPropertyModal({ onClose, onSaved }) {
     setIsSaving(true)
 
     try {
+      const assignedFolder = form.folder.trim() || getNextAvailableFolder(properties)
       const property = await createProperty({
-        folder: form.folder,
+        folder: assignedFolder,
         type: form.type,
         status: form.status,
         address: form.address,
@@ -91,9 +108,9 @@ function NewPropertyModal({ onClose, onSaved }) {
           {
             ownerId: form.ownerId,
             isPrimary: true,
-            participation: Number(form.participation || 0),
-            administration: Number(form.administration || 0),
-            commission: Number(form.commission || 0),
+	            participation: Number(form.participation || 0),
+	            administration: parsePercentageValue(form.administration),
+	            commission: Number(form.commission || 0),
           },
         ],
       })
@@ -146,14 +163,14 @@ function NewPropertyModal({ onClose, onSaved }) {
                     required
                     value={form.folder}
                   />
-                  <SelectField
-                    label={t("propertyDetail.fields.type")}
-                    name="type"
-                    onChange={updateField}
-                    options={["Vivienda", "Lote", "Local"]}
-                    required
-                    value={form.type}
-                  />
+	                  <SelectField
+	                    label={t("propertyDetail.fields.type")}
+	                    name="type"
+	                    onChange={updateField}
+	                    options={propertyTypes}
+	                    required
+	                    value={form.type}
+	                  />
                   <SelectField
                     label={t("propertyDetail.fields.status")}
                     name="status"
@@ -220,13 +237,12 @@ function NewPropertyModal({ onClose, onSaved }) {
                       type="number"
                       value={form.participation}
                     />
-                    <Field
-                      label={t("propertyDetail.fields.administration")}
-                      name="administration"
-                      onChange={updateField}
-                      type="number"
-                      value={form.administration}
-                    />
+	                    <Field
+	                      label={t("propertyDetail.fields.administration")}
+	                      name="administration"
+	                      onChange={updateField}
+	                      value={form.administration}
+	                    />
                     <Field
                       label={t("propertyDetail.fields.commission")}
                       name="commission"
@@ -368,6 +384,28 @@ function OwnerSelect({
 
 function formatOwnerName(owner) {
   return `${owner.person.lastName}, ${owner.person.firstName}`.toLowerCase()
+}
+
+function parsePercentageValue(value) {
+  const normalizedValue = String(value ?? "").replace("%", "").replace(",", ".")
+  const number = Number(normalizedValue)
+
+  return Number.isFinite(number) ? number : 0
+}
+
+function getNextAvailableFolder(properties) {
+  const usedFolders = new Set(
+    properties
+      .map((property) => Number(property.folder))
+      .filter((folder) => Number.isFinite(folder)),
+  )
+  let nextFolder = 0
+
+  while (usedFolders.has(nextFolder)) {
+    nextFolder += 1
+  }
+
+  return String(nextFolder)
 }
 
 export { NewPropertyModal }

@@ -40,11 +40,13 @@ export class ReceiptsService {
           kind: ReceiptKind.OWNER_SETTLEMENT,
         },
       })
-      const ownerReceiptPeriods = new Set(ownerReceipts.map(getReceiptPeriodKey))
+      const ownerReceiptPeriods = new Set(ownerReceipts.flatMap(getReceiptPeriodKeys))
 
       return receipts.map((receipt) =>
         toReceiptListItem(receipt, {
-          isDeleteBlocked: ownerReceiptPeriods.has(getReceiptPeriodKey(receipt)),
+          isDeleteBlocked: getReceiptPeriodKeys(receipt).some((periodKey) =>
+            ownerReceiptPeriods.has(periodKey),
+          ),
         }),
       )
     }
@@ -59,6 +61,10 @@ export class ReceiptsService {
   }
 
   async create(createReceiptDto: CreateReceiptDto) {
+    if (createReceiptDto.items.length === 0) {
+      throw new BadRequestException("No se puede crear un recibo sin conceptos")
+    }
+
     const number = createReceiptDto.number ?? (await this.getNextReceiptNumber())
     const snapshot = {
       items: createReceiptDto.items.map((item) => ({
@@ -109,7 +115,7 @@ export class ReceiptsService {
     })
 
     if (targetReceipt?.kind === ReceiptKind.TENANT_SETTLEMENT) {
-      const targetPeriod = getReceiptPeriodKey(targetReceipt)
+      const targetPeriods = new Set(getReceiptPeriodKeys(targetReceipt))
       const ownerReceipts = await this.prisma.receipt.findMany({
         where: {
           contractId: targetReceipt.contractId,
@@ -117,7 +123,10 @@ export class ReceiptsService {
         },
       })
       const hasOwnerReceipt = ownerReceipts.some(
-        (receipt) => getReceiptPeriodKey(receipt) === targetPeriod,
+        (receipt) =>
+          getReceiptPeriodKeys(receipt).some((periodKey) =>
+            targetPeriods.has(periodKey),
+          ),
       )
 
       if (hasOwnerReceipt) {
@@ -186,15 +195,18 @@ function formatDate(date: Date) {
   }).format(date)
 }
 
-function getReceiptPeriodKey(receipt: Receipt) {
+function getReceiptPeriodKeys(receipt: Receipt) {
   const snapshot = receipt.snapshot as ReceiptSnapshot | null
-  const dueDate = snapshot?.items?.[0]?.dueDate
+  const dueDates =
+    snapshot?.items
+      ?.map((item) => item.dueDate)
+      .filter((dueDate): dueDate is string => Boolean(dueDate)) ?? []
 
-  if (dueDate) {
-    return getDateTextMonthKey(dueDate)
+  if (dueDates.length > 0) {
+    return [...new Set(dueDates.map(getDateTextMonthKey))]
   }
 
-  return `${receipt.date.getUTCFullYear()}-${receipt.date.getUTCMonth() + 1}`
+  return [`${receipt.date.getUTCFullYear()}-${receipt.date.getUTCMonth() + 1}`]
 }
 
 function getDateTextMonthKey(dateText: string) {

@@ -158,6 +158,7 @@ function ContractsTable({
       ) : null}
       {selectedPaymentDetails ? (
         <PaymentDetailsModal
+          contract={selectedPaymentDetails.contract}
           contractId={selectedPaymentDetails.contractId}
           onClose={() => setSelectedPaymentDetails(null)}
           kind={selectedPaymentDetails.kind}
@@ -245,10 +246,11 @@ function ContractRow({
       </TableCell>
       <PersonCell
         onOpenBook={() =>
-          onOpenPaymentDetails?.({
-            contractId: contract.id,
-            kind: "TENANT_SETTLEMENT",
-            personName: contract.tenant,
+	          onOpenPaymentDetails?.({
+	            contract,
+	            contractId: contract.id,
+	            kind: "TENANT_SETTLEMENT",
+	            personName: contract.tenant,
           })
         }
         name={contract.tenant}
@@ -257,10 +259,11 @@ function ContractRow({
       <PersonCell
         name={contract.owner}
         onOpenBook={() =>
-          onOpenPaymentDetails?.({
-            contractId: contract.id,
-            kind: "OWNER_SETTLEMENT",
-            personName: contract.owner,
+	          onOpenPaymentDetails?.({
+	            contract,
+	            contractId: contract.id,
+	            kind: "OWNER_SETTLEMENT",
+	            personName: contract.owner,
           })
         }
         onOpen={() => onOpenOwnerAccount?.(contract)}

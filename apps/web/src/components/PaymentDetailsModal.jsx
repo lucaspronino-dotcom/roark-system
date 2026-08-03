@@ -1,8 +1,10 @@
 import { AlertCircle, ArrowLeft, Download, Trash2, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { createOwnerAccountPdf } from "@/components/OwnerAccountModal"
+import { createSettlementPdf } from "@/components/RentSettlement"
 import {
   Card,
   CardAction,
@@ -20,17 +22,33 @@ import {
 } from "@/components/ui/table"
 import { deleteReceipt, getReceipts } from "@/services/receiptsService"
 
-function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
+function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }) {
   const { t } = useTranslation()
   const [payments, setPayments] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [message, setMessage] = useState("")
 
+  const loadReceipts = useCallback(
+    async ({ keepLoadingState = false } = {}) => {
+      if (!keepLoadingState) {
+        setIsLoading(true)
+      }
+
+      const receipts = await getReceipts({ contractId, kind, personName })
+
+      setPayments(receipts)
+      if (!keepLoadingState) {
+          setIsLoading(false)
+      }
+    },
+    [contractId, kind, personName],
+  )
+
   useEffect(() => {
     let ignore = false
 
-    async function loadReceipts() {
+    async function loadInitialReceipts() {
       setIsLoading(true)
 
       try {
@@ -46,12 +64,34 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
       }
     }
 
-    loadReceipts()
+    loadInitialReceipts()
 
     return () => {
       ignore = true
     }
   }, [contractId, kind, personName])
+
+  useEffect(() => {
+    function handleReceiptsChanged(event) {
+      const detail = event.detail ?? {}
+
+      if (
+        detail.contractId !== contractId ||
+        detail.kind !== kind ||
+        detail.personName !== personName
+      ) {
+        return
+      }
+
+      loadReceipts({ keepLoadingState: true }).catch(() => {})
+    }
+
+    window.addEventListener("roark:receipts-changed", handleReceiptsChanged)
+
+    return () => {
+      window.removeEventListener("roark:receipts-changed", handleReceiptsChanged)
+    }
+  }, [contractId, kind, loadReceipts, personName])
 
   async function removeReceipt(payment) {
     setMessage("")
@@ -180,10 +220,12 @@ function PaymentDetailsModal({ contractId, kind, onClose, personName }) {
       </Card>
 
       {selectedReceipt ? (
-        <ReceiptPdfModal
-          onClose={() => setSelectedReceipt(null)}
-          receipt={selectedReceipt}
-        />
+	        <ReceiptPdfModal
+	          contract={contract}
+	          kind={kind}
+	          onClose={() => setSelectedReceipt(null)}
+	          receipt={selectedReceipt}
+	        />
       ) : null}
       {message ? (
         <SmallAlertModal message={message} onClose={() => setMessage("")} />
@@ -220,8 +262,33 @@ function SmallAlertModal({ message, onClose }) {
   )
 }
 
-function ReceiptPdfModal({ onClose, receipt }) {
-  const pdfUrl = `data:application/pdf;base64,${receipt.pdfBase64}`
+function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
+  const [pdfUrl, setPdfUrl] = useState("")
+
+  useEffect(() => {
+    const savedPdfUrl =
+      receipt.pdfBase64 && isCurrentReceiptPdf(receipt.pdfBase64)
+        ? `data:application/pdf;base64,${receipt.pdfBase64}`
+        : ""
+
+    if (savedPdfUrl) {
+      setPdfUrl(savedPdfUrl)
+      return undefined
+    }
+
+    const rebuiltPdf = rebuildReceiptPdf({ contract, kind, receipt })
+
+    if (!rebuiltPdf) {
+      setPdfUrl(receipt.pdfBase64 ? `data:application/pdf;base64,${receipt.pdfBase64}` : "")
+      return undefined
+    }
+
+    const objectUrl = URL.createObjectURL(rebuiltPdf)
+
+    setPdfUrl(objectUrl)
+
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [contract, kind, receipt])
 
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
@@ -233,11 +300,11 @@ function ReceiptPdfModal({ onClose, receipt }) {
               <ArrowLeft />
               Volver
             </Button>
-            <Button asChild size="sm" variant="outline">
-              <a download={`recibo-${receipt.receipt}.pdf`} href={pdfUrl}>
-                <Download />
-                Descargar
-              </a>
+	            <Button asChild size="sm" variant="outline">
+	              <a download={`recibo-${receipt.receipt}.pdf`} href={pdfUrl}>
+	                <Download />
+	                Descargar
+	              </a>
             </Button>
             <Button onClick={onClose} size="icon-sm" variant="ghost">
               <X />
@@ -245,15 +312,76 @@ function ReceiptPdfModal({ onClose, receipt }) {
           </div>
         </CardHeader>
         <CardContent className="h-[calc(90vh-73px)] p-0">
-          <iframe
-            className="h-full w-full bg-white"
-            src={pdfUrl}
-            title={`PDF recibo N° ${receipt.receipt}`}
-          />
-        </CardContent>
-      </Card>
-    </div>
+	          {pdfUrl ? (
+	            <iframe
+	              className="h-full w-full bg-white"
+	              src={pdfUrl}
+	              title={`PDF recibo N° ${receipt.receipt}`}
+	            />
+	          ) : null}
+	        </CardContent>
+	      </Card>
+	    </div>
   )
+}
+
+function rebuildReceiptPdf({ contract, kind, receipt }) {
+  const items = receipt.snapshot?.items ?? []
+
+  if (!contract || items.length === 0) {
+    return null
+  }
+
+  if (kind === "OWNER_SETTLEMENT") {
+    return createOwnerAccountPdf({
+      contract,
+      date: receipt.receiptDate,
+      documentTitle: `RECIBO N° ${receipt.receipt}`,
+      fees: items.reduce((sum, item) => sum + Number(item.administration || 0), 0),
+      items: items.map((item) => ({
+        administration: Number(item.administration || 0),
+        amount: Number(item.amount || 0),
+        date: item.dueDate,
+        description: item.description,
+        total: Number(item.total || 0),
+      })),
+      notes: "",
+      ownerName: receipt.personName || contract.owner,
+      total: receipt.total,
+    })
+  }
+
+  return createSettlementPdf({
+    adjustmentNotice: "",
+    balance: receipt.balance,
+    balanceLabel: "Saldo",
+    contract,
+    date: receipt.receiptDate,
+    documentTitle: `RECIBO N° ${receipt.receipt}`,
+    items: items.map((item) => ({
+      apply: true,
+      description: item.description,
+      dueDate: item.dueDate,
+      edit: Number(item.amount || 0),
+      penaltyAmount: Number(item.penalties || 0),
+      totalAmount: Number(item.total || 0),
+    })),
+    notes: [],
+    paidAmount: receipt.paid,
+    receiptNumber: receipt.receipt,
+    total: receipt.total,
+    variant: "receipt",
+  })
+}
+
+function isCurrentReceiptPdf(pdfBase64) {
+  try {
+    const pdfText = atob(pdfBase64)
+
+    return pdfText.includes("Es copia:") || pdfText.includes("/Count 2")
+  } catch {
+    return false
+  }
 }
 
 function formatCurrency(value) {
@@ -283,7 +411,7 @@ function restoreOwnerAccountDraft(contractId, receipt) {
 
   window.localStorage.setItem(
     storageKey,
-    JSON.stringify([...restoredItems, ...currentItems]),
+    JSON.stringify(uniqueOwnerAccountDraftItems([...restoredItems, ...currentItems])),
   )
 }
 
@@ -302,6 +430,38 @@ function removeOwnerAccountDraftItemsForTenantReceipt(contractId, receipt) {
   )
 
   window.localStorage.setItem(storageKey, JSON.stringify(nextItems))
+}
+
+function uniqueOwnerAccountDraftItems(items) {
+  const seenKeys = new Set()
+
+  return items.filter((item) => {
+    const key = [
+      getMonthKey(item.date),
+      normalizeOwnerItemDescription(item.description),
+      Number(item.amount || 0),
+    ].join("|")
+
+    if (seenKeys.has(key)) {
+      return false
+    }
+
+    seenKeys.add(key)
+    return true
+  })
+}
+
+function getMonthKey(dateText) {
+  const [, month, year] = String(dateText).split("/").map(Number)
+
+  return `${year}-${month}`
+}
+
+function normalizeOwnerItemDescription(description) {
+  return String(description ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
 }
 
 function isSameReceiptDraftItem(draftItem, receiptItems) {

@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, Printer, Save, Trash2, X } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,9 @@ function OwnerAccountModal({ contract, onClose }) {
   const ownerName = contract.owner
   const [activeTab, setActiveTab] = useState("mainData")
   const [items, setItems] = useState(() => loadOwnerAccountDraft(contract.id))
+  const [deletedItemKeys, setDeletedItemKeys] = useState(() =>
+    loadDeletedOwnerItemKeys(contract.id),
+  )
   const [notes, setNotes] = useState("")
   const [pdfUrl, setPdfUrl] = useState(null)
   const [pdfTitle, setPdfTitle] = useState("")
@@ -39,27 +42,93 @@ function OwnerAccountModal({ contract, onClose }) {
   const fees = items.reduce((sum, item) => sum + Number(item.administration || 0), 0)
   const total = items.reduce((sum, item) => sum + item.total, 0)
 
-  useEffect(() => {
-    let ignore = false
-
-    async function loadMonthlyReceipt() {
-      const receipts = await getReceipts({
+  const syncItemsFromReceipts = useCallback(async () => {
+    const [tenantReceipts, ownerReceipts] = await Promise.all([
+      getReceipts({
+        contractId: contract.id,
+        kind: "TENANT_SETTLEMENT",
+        personName: contract.tenant,
+      }),
+      getReceipts({
         contractId: contract.id,
         kind: "OWNER_SETTLEMENT",
         personName: ownerName,
-      })
+      }),
+    ])
 
-      if (!ignore && hasReceiptForCurrentMonth(receipts, today)) {
-        setItems((currentItems) => (currentItems.length > 0 ? currentItems : []))
+    const deletedKeys = loadDeletedOwnerItemKeys(contract.id)
+    const settledKeys = getOwnerSettledItemKeys(ownerReceipts)
+    const receiptItems = tenantReceipts.flatMap((receipt) =>
+      getReceiptSnapshotItems(receipt)
+        .map((item, index) =>
+          createOwnerAccountItem({
+            amount: Number(item.amount || 0),
+            date: item.dueDate,
+            description: item.description,
+            id: `tenant-${receipt.id}-${index}`,
+            penalties: Number(item.penalties || 0),
+            sourceReceiptId: receipt.id,
+          }),
+        )
+        .filter((item) => {
+          const itemKey = getOwnerItemSourceKey(item)
+
+          return !settledKeys.has(itemKey) && !deletedKeys.has(itemKey)
+        }),
+    )
+    const tenantReceiptIds = new Set(tenantReceipts.map((receipt) => receipt.id))
+    const manualDraftItems = loadOwnerAccountDraft(contract.id).filter((item) => {
+      if (!item.sourceReceiptId) {
+        return !deletedKeys.has(getOwnerItemSourceKey(item))
       }
-    }
 
-    loadMonthlyReceipt()
+      return (
+        tenantReceiptIds.has(item.sourceReceiptId) &&
+        !settledKeys.has(getOwnerItemSourceKey(item)) &&
+        !deletedKeys.has(getOwnerItemSourceKey(item))
+      )
+    })
+    const nextItems = uniqueOwnerAccountItems([
+      ...receiptItems,
+      ...manualDraftItems.filter((item) => !item.sourceReceiptId),
+    ])
+
+    setDeletedItemKeys(deletedKeys)
+    setItems(nextItems)
+    saveOwnerAccountDraft(contract.id, nextItems)
+  }, [contract.id, contract.tenant, ownerName])
+
+  useEffect(() => {
+    let ignore = false
+
+    syncItemsFromReceipts().catch(() => {
+      if (!ignore) {
+        setItems(uniqueOwnerAccountItems(loadOwnerAccountDraft(contract.id)))
+      }
+    })
 
     return () => {
       ignore = true
     }
-  }, [contract.id, ownerName, today])
+  }, [contract.id, syncItemsFromReceipts])
+
+  useEffect(() => {
+    function handleReceiptsChanged(event) {
+      const detail = event.detail ?? {}
+
+      if (detail.contractId !== contract.id) {
+        return
+      }
+
+      syncItemsFromReceipts().catch(() => {})
+    }
+
+    window.addEventListener("roark:receipts-changed", handleReceiptsChanged)
+
+    return () => {
+      window.removeEventListener("roark:receipts-changed", handleReceiptsChanged)
+    }
+  }, [contract.id, syncItemsFromReceipts])
 
   function addExtraConcept(concept) {
     setItems((currentItems) => {
@@ -74,9 +143,18 @@ function OwnerAccountModal({ contract, onClose }) {
 
   function removeItem(itemId) {
     setItems((currentItems) => {
+      const removedItem = currentItems.find((item) => item.id === itemId)
       const nextItems = currentItems.filter((item) => item.id !== itemId)
 
       saveOwnerAccountDraft(contract.id, nextItems)
+
+      if (removedItem) {
+        const nextDeletedItemKeys = new Set(deletedItemKeys)
+
+        nextDeletedItemKeys.add(getOwnerItemSourceKey(removedItem))
+        setDeletedItemKeys(nextDeletedItemKeys)
+        saveDeletedOwnerItemKeys(contract.id, nextDeletedItemKeys)
+      }
 
       return nextItems
     })
@@ -136,6 +214,12 @@ function OwnerAccountModal({ contract, onClose }) {
       setPdfUrl(URL.createObjectURL(pdfBlob))
       setItems([])
       clearOwnerAccountDraft(contract.id)
+      clearDeletedOwnerItemKeys(contract.id)
+      notifyReceiptsChanged({
+        contractId: contract.id,
+        kind: "OWNER_SETTLEMENT",
+        personName: ownerName,
+      })
     } finally {
       setIsSaving(false)
     }
@@ -478,7 +562,14 @@ function createOwnerAccountPdf({
   ownerName,
   total,
 }) {
-  const lines = []
+  let lines = []
+  const pages = [lines]
+  const fitsCopyOnOnePage = items.length <= 8
+
+  function addPage() {
+    lines = []
+    pages.push(lines)
+  }
 
   function addText(x, y, size, text) {
     lines.push("BT")
@@ -494,57 +585,18 @@ function createOwnerAccountPdf({
     lines.push("S")
   }
 
-  addText(50, 800, 18, documentTitle)
-  addLine(50, 790, 545, 790)
-  addText(50, 765, 10, `Estado de cuenta de: ${ownerName}`)
-  addText(50, 748, 10, `Propiedad: ${contract.address}`)
-  addText(50, 731, 10, `Fecha: ${date}`)
+  drawOwnerReceipt(800, "ORIGINAL", true)
 
-  addText(50, 700, 10, "Fecha")
-  addText(120, 700, 10, "Descripcion")
-  addText(350, 700, 10, "Monto")
-  addText(430, 700, 10, "Admin.")
-  addText(490, 700, 10, "Total")
-  addLine(50, 692, 545, 692)
-
-  let y = 675
-
-  items.forEach((item) => {
-    addText(50, y, 9, item.date)
-    addText(120, y, 9, truncatePdfText(item.description, 36))
-    addText(350, y, 9, formatCurrency(item.amount))
-    addText(430, y, 9, formatCurrency(item.administration))
-    addText(490, y, 9, formatCurrency(item.total))
-    y -= 17
-  })
-
-  addLine(50, y - 4, 545, y - 4)
-  y -= 26
-  addText(365, y, 10, "Honorarios")
-  addText(490, y, 10, formatCurrency(fees))
-  y -= 18
-  addText(365, y, 10, "TOTAL")
-  addText(490, y, 10, formatCurrency(total))
-
-  if (notes.trim()) {
-    y = 115
-    addLine(50, y + 18, 545, y + 18)
-    addText(50, y, 10, "Notas")
-    y -= 18
-    splitPdfText(notes, 88).forEach((line) => {
-      addText(50, y, 9, line)
-      y -= 14
-    })
+  if (fitsCopyOnOnePage) {
+    addLine(50, 420, 545, 420)
+    addText(50, 402, 9, "Es copia:")
+    drawOwnerReceipt(372, "COPIA", false, true)
+  } else {
+    addPage()
+    drawOwnerReceipt(800, "COPIA", true)
   }
 
-  const stream = lines.join("\n")
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
-  ]
+  const objects = createPdfObjectsFromPages(pages)
 
   let pdf = "%PDF-1.4\n"
   const offsets = [0]
@@ -563,6 +615,87 @@ function createOwnerAccountPdf({
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
 
   return new Blob([pdf], { type: "application/pdf" })
+
+  function drawOwnerReceipt(topY, copyLabel, includeNotes, compact = false) {
+    addText(50, topY, compact ? 11 : 16, documentTitle)
+    addText(455, topY, compact ? 9 : 11, copyLabel)
+    addLine(50, topY - 10, 545, topY - 10)
+    addText(50, topY - 30, 9, `Estado de cuenta de: ${ownerName}`)
+    addText(50, topY - 46, 9, `Propiedad: ${contract.address}`)
+    addText(455, topY - 30, 9, `Fecha: ${date}`)
+
+    const tableTop = topY - (compact ? 75 : 90)
+    drawOwnerTableHeader(tableTop)
+    let y = drawOwnerRows(tableTop - 17)
+
+    addLine(50, y - 4, 545, y - 4)
+    y -= 24
+    addText(365, y, 9, "Honorarios")
+    addText(490, y, 9, formatCurrency(fees))
+    y -= 18
+    addText(365, y, 9, "TOTAL")
+    addText(490, y, 9, formatCurrency(total))
+
+    if (includeNotes && notes.trim()) {
+      y = compact ? 110 : Math.min(y - 35, 145)
+      addLine(50, y + 18, 545, y + 18)
+      addText(50, y, 9, "Notas")
+      y -= 16
+      splitPdfText(notes, 88).forEach((line) => {
+        addText(50, y, 8, line)
+        y -= 12
+      })
+    }
+  }
+
+  function drawOwnerTableHeader(y) {
+    addText(50, y, 8, "Fecha")
+    addText(120, y, 8, "Descripcion")
+    addText(350, y, 8, "Monto")
+    addText(430, y, 8, "Admin.")
+    addText(490, y, 8, "Total")
+    addLine(50, y - 6, 545, y - 6)
+  }
+
+  function drawOwnerRows(startY) {
+    let y = startY
+
+    items.forEach((item) => {
+      addText(50, y, 8, item.date)
+      addText(120, y, 8, truncatePdfText(item.description, 36))
+      addText(350, y, 8, formatCurrency(item.amount))
+      addText(430, y, 8, formatCurrency(item.administration))
+      addText(490, y, 8, formatCurrency(item.total))
+      y -= 14
+    })
+
+    return y
+  }
+}
+
+function createPdfObjectsFromPages(pages) {
+  const pageCount = pages.length
+  const fontRegularId = 3 + pageCount * 2
+  const pageIds = pages.map((_, index) => 3 + index * 2)
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+  ]
+
+  pages.forEach((pageLines, index) => {
+    const pageId = 3 + index * 2
+    const contentId = pageId + 1
+    const stream = pageLines.join("\n")
+
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontRegularId} 0 R >> >> /Contents ${contentId} 0 R >>`,
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    )
+  })
+
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+  return objects
 }
 
 function formatCurrency(value) {
@@ -646,7 +779,7 @@ function saveOwnerAccountDraft(contractId, items) {
 
   window.localStorage.setItem(
     `owner-account-draft:${contractId}`,
-    JSON.stringify(items),
+    JSON.stringify(uniqueOwnerAccountItems(items)),
   )
 }
 
@@ -656,6 +789,41 @@ function clearOwnerAccountDraft(contractId) {
   }
 
   window.localStorage.removeItem(`owner-account-draft:${contractId}`)
+}
+
+function loadDeletedOwnerItemKeys(contractId) {
+  if (!contractId || typeof window === "undefined") {
+    return new Set()
+  }
+
+  try {
+    return new Set(
+      JSON.parse(
+        window.localStorage.getItem(`owner-account-deleted:${contractId}`) ?? "[]",
+      ),
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDeletedOwnerItemKeys(contractId, itemKeys) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(
+    `owner-account-deleted:${contractId}`,
+    JSON.stringify([...itemKeys]),
+  )
+}
+
+function clearDeletedOwnerItemKeys(contractId) {
+  if (!contractId || typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.removeItem(`owner-account-deleted:${contractId}`)
 }
 
 function createOwnerAccountItem({
@@ -690,10 +858,70 @@ function hasReceiptForCurrentMonth(receipts, currentDate) {
   return receipts.some((receipt) => getMonthKey(receipt.receiptDate) === currentMonth)
 }
 
+function getOwnerSettledItemKeys(receipts) {
+  const keys = new Set()
+
+  receipts.forEach((receipt) => {
+    getReceiptSnapshotItems(receipt).forEach((item) => {
+      keys.add(
+        getOwnerItemSourceKey({
+          amount: Number(item.amount || 0),
+          date: item.dueDate,
+          description: item.description,
+        }),
+      )
+    })
+  })
+
+  return keys
+}
+
+function getReceiptSnapshotItems(receipt) {
+  return Array.isArray(receipt.snapshot?.items) ? receipt.snapshot.items : []
+}
+
+function uniqueOwnerAccountItems(items) {
+  const seenKeys = new Set()
+
+  return items.filter((item) => {
+    const key = getOwnerItemSourceKey(item)
+
+    if (seenKeys.has(key)) {
+      return false
+    }
+
+    seenKeys.add(key)
+    return true
+  })
+}
+
+function getOwnerItemSourceKey(item) {
+  return [
+    getMonthKey(item.date),
+    normalizeOwnerItemDescription(item.description),
+    Number(item.amount || 0),
+  ].join("|")
+}
+
+function normalizeOwnerItemDescription(description) {
+  return String(description ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+}
+
+function notifyReceiptsChanged(detail) {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.dispatchEvent(new CustomEvent("roark:receipts-changed", { detail }))
+}
+
 function getMonthKey(dateText) {
   const [, month, year] = String(dateText).split("/").map(Number)
 
   return `${year}-${month}`
 }
 
-export { OwnerAccountModal }
+export { createOwnerAccountPdf, OwnerAccountModal }

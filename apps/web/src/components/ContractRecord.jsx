@@ -90,6 +90,8 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const [isNewTenantOpen, setIsNewTenantOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
   const [isRenewConfirmationOpen, setIsRenewConfirmationOpen] = useState(false)
+  const [isPastPeriodsConfirmationOpen, setIsPastPeriodsConfirmationOpen] =
+    useState(false)
   const selectedProperty = properties.find((property) => property.id === form.propertyId)
   const selectedTenant = tenants.find((tenant) => tenant.id === form.tenantId)
   const propertyDisplayValue = selectedProperty?.address ?? contract.address ?? ""
@@ -119,6 +121,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
         ),
         periodValues: initialPeriodValues,
         surchargeSettings: initialSurchargeSettings,
+        skipPastPeriods: contractSettings.periods.skipPastPeriods,
         terminationDate: initialTerminationDate,
       }),
     [
@@ -135,6 +138,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
       initialStartDate,
       initialSurchargeSettings,
       initialTerminationDate,
+      contractSettings.periods.skipPastPeriods,
     ],
   )
   const currentSnapshot = getContractRecordSnapshot({
@@ -145,6 +149,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
     periodRows,
     periodValues,
     surchargeSettings,
+    skipPastPeriods: contractSettings.periods.skipPastPeriods,
     terminationDate,
   })
   const hasUnsavedChanges = currentSnapshot !== initialSnapshot
@@ -299,9 +304,22 @@ function ContractRecord({ contract, onBack, onSaved }) {
     onBack()
   }
 
-  async function handleSaveAndExit() {
+  async function handleSaveAndExit(skipPastPeriods) {
     setError("")
     setMessage("")
+
+    const hasPastPeriodsPreference =
+      typeof contract.settings?.periods?.skipPastPeriods === "boolean"
+    const shouldConfirmPastPeriods =
+      skipPastPeriods === undefined &&
+      isBeforeCurrentMonth(form.startDate) &&
+      (!contract.id || form.startDate !== initialStartDate || !hasPastPeriodsPreference)
+
+    if (shouldConfirmPastPeriods) {
+      setIsPastPeriodsConfirmationOpen(true)
+      return
+    }
+
     setIsSavingAndExiting(true)
 
     try {
@@ -315,8 +333,12 @@ function ContractRecord({ contract, onBack, onSaved }) {
         periodRows,
         periodValues,
         surchargeSettings,
-        terminationDate,
-      })
+	        terminationDate,
+	        skipPastPeriods:
+	          skipPastPeriods ??
+	          contractSettings.periods.skipPastPeriods ??
+	          false,
+	      })
       const payload = {
         endDate: form.endDate,
         folder: assignedFolder,
@@ -355,12 +377,33 @@ function ContractRecord({ contract, onBack, onSaved }) {
   }
 
   function confirmRenew() {
-    const renewedEndDate = addMonths(form.endDate, 24)
+    const renewalDate = formatDateValue(new Date())
+    const renewalEndDate = calculateEndDate(renewalDate, installments)
+    const renewedPeriodRows = getPeriodRows(
+      Number(installments),
+      Number(adjustmentInterval),
+    )
 
-    updateField("endDate", renewedEndDate)
-    updateField("status", "ACTIVE")
+    setForm((currentForm) => ({
+      ...currentForm,
+      endDate: renewalEndDate,
+      startDate: renewalDate,
+      status: "ACTIVE",
+    }))
+    setPeriodValues(
+      renewedPeriodRows.map(() => ({
+        extras: "$ 0,00",
+        rent: "",
+      })),
+    )
+    setSurchargeSettings((currentSettings) => ({
+      ...currentSettings,
+      firstPaymentDate: renewalDate,
+    }))
+    setTerminationDate("")
+    setActiveTab("mainData")
     setIsRenewConfirmationOpen(false)
-    setMessage(t("contractRecord.messages.renewed", { date: renewedEndDate }))
+    setMessage(t("contractRecord.messages.renewed", { date: renewalDate }))
   }
 
   return (
@@ -460,7 +503,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title={t("contractRecord.sections.periods")}>
-              <div className="grid gap-3 md:grid-cols-[120px_70px_110px_55px_120px]">
+              <div className="grid gap-3 md:grid-cols-[160px_70px_110px_55px_120px]">
                 <DatePickerField
                   label={t("contractRecord.fields.start")}
                   onChange={updateStartDate}
@@ -650,7 +693,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
           <ToolbarButton
             disabled={isSavingAndExiting}
             icon={Save}
-            onClick={handleSaveAndExit}
+            onClick={() => handleSaveAndExit()}
           >
             {t("actions.saveAndExit")}
           </ToolbarButton>
@@ -692,14 +735,26 @@ function ContractRecord({ contract, onBack, onSaved }) {
           title={t("contractRecord.renewModal.title")}
         />
       ) : null}
-      {isUnsavedChangesOpen ? (
-        <UnsavedChangesModal
-          isSaving={isSavingAndExiting}
-          onCancel={() => setIsUnsavedChangesOpen(false)}
-          onDiscard={onBack}
-          onSave={handleSaveAndExit}
-        />
-      ) : null}
+	      {isUnsavedChangesOpen ? (
+	        <UnsavedChangesModal
+	          isSaving={isSavingAndExiting}
+	          onCancel={() => setIsUnsavedChangesOpen(false)}
+	          onDiscard={onBack}
+	          onSave={() => handleSaveAndExit()}
+	        />
+	      ) : null}
+	      {isPastPeriodsConfirmationOpen ? (
+	        <PastPeriodsConfirmationModal
+	          onDeletePrevious={() => {
+	            setIsPastPeriodsConfirmationOpen(false)
+	            handleSaveAndExit(true)
+	          }}
+	          onKeepPrevious={() => {
+	            setIsPastPeriodsConfirmationOpen(false)
+	            handleSaveAndExit(false)
+	          }}
+	        />
+	      ) : null}
       {savedContractSummary ? (
         <SavedContractModal
           folder={savedContractSummary.folder}
@@ -1023,11 +1078,12 @@ function DatePickerField({ label, onChange, placement = "bottom", value }) {
     <div className="relative space-y-1">
       <Label>{label}</Label>
       <div className="flex">
-        <Input
-          className="border-primary/30 bg-primary/10"
-          onChange={(event) => onChange(event.target.value)}
-          value={value}
-        />
+	        <Input
+	          className="border-primary/30 bg-primary/10"
+	          onFocus={() => setIsOpen(true)}
+	          onChange={(event) => onChange(event.target.value)}
+	          value={value}
+	        />
         <Button
           aria-label={t("contractRecord.calendar.open")}
           className="border-l-0"
@@ -1242,6 +1298,7 @@ function getContractSettings(contract) {
         getStoredContractSetting(contract.id, "adjustmentType", "ICL"),
       installments: periods.installments ?? "24",
       rows: Array.isArray(periods.rows) ? periods.rows : [],
+      skipPastPeriods: periods.skipPastPeriods ?? false,
     },
     surcharges: {
       chargeFromDay:
@@ -1274,6 +1331,7 @@ function buildContractSettings({
   periodRows,
   periodValues,
   surchargeSettings,
+  skipPastPeriods = false,
   terminationDate,
 }) {
   return {
@@ -1286,6 +1344,7 @@ function buildContractSettings({
         rent: periodValues[index]?.rent ?? "",
         untilInstallment,
       })),
+      skipPastPeriods,
     },
     surcharges: surchargeSettings,
     termination: {
@@ -1302,6 +1361,7 @@ function getContractRecordSnapshot({
   periodRows,
   periodValues,
   surchargeSettings,
+  skipPastPeriods,
   terminationDate,
 }) {
   return JSON.stringify({
@@ -1323,6 +1383,7 @@ function getContractRecordSnapshot({
       periodRows,
       periodValues,
       surchargeSettings,
+      skipPastPeriods,
       terminationDate,
     }),
   })
@@ -1367,6 +1428,19 @@ function formatMoneyInput(value) {
   }).format(Number(digits))}`
 }
 
+function isBeforeCurrentMonth(dateValue) {
+  const date = parseDateValue(dateValue)
+
+  if (!date) {
+    return false
+  }
+
+  const today = new Date()
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+
+  return date < currentMonthStart
+}
+
 function ConfirmationModal({ message, onAccept, onCancel, title }) {
   const { t } = useTranslation()
 
@@ -1386,6 +1460,35 @@ function ConfirmationModal({ message, onAccept, onCancel, title }) {
             </Button>
             <Button onClick={onAccept}>
               {t("actions.accept")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function PastPeriodsConfirmationModal({ onDeletePrevious, onKeepPrevious }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="border-b">
+          <CardTitle className="text-lg font-semibold text-primary">
+            {t("contractRecord.pastPeriodsModal.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-5">
+          <p className="text-sm text-foreground">
+            {t("contractRecord.pastPeriodsModal.message")}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={onKeepPrevious} variant="outline">
+              {t("contractRecord.pastPeriodsModal.keep")}
+            </Button>
+            <Button onClick={onDeletePrevious}>
+              {t("contractRecord.pastPeriodsModal.delete")}
             </Button>
           </div>
         </CardContent>
