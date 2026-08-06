@@ -1,16 +1,35 @@
-# React + Vite
+# Roark System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sistema web con API y frontend en workspaces npm.
 
-Currently, two official plugins are available:
+## Levantar el entorno local
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Levantar PostgreSQL:
 
-## React Compiler
+```bash
+cd ~/dev/postgres_docker
+docker compose up -d
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Levantar la API:
 
-## Expanding the ESLint configuration
+```bash
+cd ~/dev/roark-system
+npm run dev:api
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3. En otra terminal, levantar el frontend:
+
+```bash
+cd ~/dev/roark-system
+npm run dev:host -w @roark/web
+```
+
+El frontend usa `VITE_API_URL` desde `apps/web/.env`. Hoy apunta a
+`http://roark.uno:3000`; si entras por IP y falla alguna llamada a la API,
+cambialo a `http://200.58.96.246:3000` y reinicia Vite.
+
+## Base de datos
+
+La guia completa de configuracion, migraciones y seed esta en
+[`docs/database.md`](docs/database.md).
