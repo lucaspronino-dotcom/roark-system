@@ -12,14 +12,15 @@ import {
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ContractStatusBadge } from "@/components/ContractStatusBadge"
 import { IndependentReceiptModal } from "@/components/IndependentReceiptModal"
 import { Input } from "@/components/ui/input"
 import { InteractiveCell } from "@/components/ui/interactive-cell"
 import { NewPropertyModal } from "@/components/NewPropertyModal"
 import { OwnerAccountModal } from "@/components/OwnerAccountModal"
 import { PaymentDetailsModal } from "@/components/PaymentDetailsModal"
+import { ResponsiveContractCard } from "@/components/ResponsiveContractCard"
 import {
   Table,
   TableBody,
@@ -94,7 +95,7 @@ function ContractsTable({
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="hidden rounded-md border bg-card lg:block">
         <Table className="table-fixed">
           <colgroup>
             <col className="w-[88px]" />
@@ -151,6 +152,33 @@ function ContractsTable({
         </Table>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 lg:hidden">
+        {isLoading ? (
+          <ResponsiveMessage>{t("table.loading")}</ResponsiveMessage>
+        ) : null}
+        {error ? (
+          <ResponsiveMessage className="text-destructive">
+            {t("table.loadError")}
+          </ResponsiveMessage>
+        ) : null}
+        {!isLoading && !error && visibleContracts.length === 0 ? (
+          <ResponsiveMessage>{t("table.empty")}</ResponsiveMessage>
+        ) : null}
+        {visibleContracts.map((contract, index) => (
+          <ResponsiveContractCard
+            actions={createContractActions(contract, {
+              onOpenContract,
+              onOpenOwnerAccount: setSelectedOwner,
+              onOpenPaymentDetails: setSelectedPaymentDetails,
+              onOpenProperty,
+              onOpenRentSettlement,
+            })}
+            contract={contract}
+            key={`${contract.folder}-${contract.end}-${index}`}
+          />
+        ))}
+      </div>
+
       {selectedOwner ? (
         <OwnerAccountModal
           contract={selectedOwner}
@@ -193,6 +221,14 @@ function MainActionButton({ children, icon: Icon, onClick }) {
   )
 }
 
+function ResponsiveMessage({ children, className = "text-muted-foreground" }) {
+  return (
+    <div className={`rounded-lg border bg-card p-4 text-xs md:col-span-2 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
 function HeaderCell({ children, icon: Icon }) {
   return (
     <TableHead>
@@ -213,7 +249,13 @@ function ContractRow({
   onOpenRentSettlement,
 }) {
   const expired = contract.status === "Vencido"
-  const { t } = useTranslation()
+  const actions = createContractActions(contract, {
+    onOpenContract,
+    onOpenOwnerAccount,
+    onOpenPaymentDetails,
+    onOpenProperty,
+    onOpenRentSettlement,
+  })
 
   return (
     <TableRow>
@@ -221,7 +263,7 @@ function ContractRow({
         <InteractiveCell
           className="w-full"
           label={`#${String(contract.folder).replace(/^#/, "")}`}
-          onClick={() => onOpenContract?.(contract)}
+          onClick={actions.openContract}
         />
       </TableCell>
       <TableCell className={expired ? "text-destructive" : undefined}>
@@ -231,40 +273,47 @@ function ContractRow({
         <InteractiveCell
           className="w-full"
           label={contract.address}
-          onClick={() => onOpenProperty?.(contract)}
+          onClick={actions.openProperty}
         />
       </TableCell>
       <TableCell>
-        <Badge variant={expired ? "destructive" : "secondary"}>
-          {expired ? t("status.expired") : t("status.activeRent")}
-        </Badge>
+        <ContractStatusBadge expired={expired} />
       </TableCell>
       <PersonCell
-        onOpenBook={() =>
-	          onOpenPaymentDetails?.({
-	            contract,
-	            contractId: contract.id,
-	            kind: "TENANT_SETTLEMENT",
-	            personName: contract.tenant,
-          })
-        }
         name={contract.tenant}
-        onOpen={() => onOpenRentSettlement?.(contract)}
+        onOpen={actions.openRentSettlement}
+        onOpenBook={actions.openTenantPaymentDetails}
       />
       <PersonCell
         name={contract.owner}
-        onOpenBook={() =>
-	          onOpenPaymentDetails?.({
-	            contract,
-	            contractId: contract.id,
-	            kind: "OWNER_SETTLEMENT",
-	            personName: contract.owner,
-          })
-        }
-        onOpen={() => onOpenOwnerAccount?.(contract)}
+        onOpen={actions.openOwnerAccount}
+        onOpenBook={actions.openOwnerPaymentDetails}
       />
     </TableRow>
   )
+}
+
+function createContractActions(contract, handlers) {
+  return {
+    openContract: () => handlers.onOpenContract?.(contract),
+    openOwnerAccount: () => handlers.onOpenOwnerAccount?.(contract),
+    openOwnerPaymentDetails: () =>
+      handlers.onOpenPaymentDetails?.({
+        contract,
+        contractId: contract.id,
+        kind: "OWNER_SETTLEMENT",
+        personName: contract.owner,
+      }),
+    openProperty: () => handlers.onOpenProperty?.(contract),
+    openRentSettlement: () => handlers.onOpenRentSettlement?.(contract),
+    openTenantPaymentDetails: () =>
+      handlers.onOpenPaymentDetails?.({
+        contract,
+        contractId: contract.id,
+        kind: "TENANT_SETTLEMENT",
+        personName: contract.tenant,
+      }),
+  }
 }
 
 function PersonCell({ name, onOpen, onOpenBook }) {
