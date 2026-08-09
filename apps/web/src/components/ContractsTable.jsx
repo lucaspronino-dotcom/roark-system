@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { IndependentReceiptModal } from "@/components/IndependentReceiptModal"
 import { Input } from "@/components/ui/input"
+import { InteractiveCell } from "@/components/ui/interactive-cell"
 import { NewPropertyModal } from "@/components/NewPropertyModal"
 import { OwnerAccountModal } from "@/components/OwnerAccountModal"
 import { PaymentDetailsModal } from "@/components/PaymentDetailsModal"
@@ -96,10 +97,10 @@ function ContractsTable({
       <div className="rounded-md border bg-card">
         <Table className="table-fixed">
           <colgroup>
-            <col className="w-[72px]" />
-            <col className="w-[120px]" />
+            <col className="w-[88px]" />
+            <col className="w-[112px]" />
             <col className="w-[250px]" />
-            <col className="w-[120px]" />
+            <col className="w-[112px]" />
             <col className="w-[320px]" />
             <col className="w-[260px]" />
           </colgroup>
@@ -217,27 +218,21 @@ function ContractRow({
   return (
     <TableRow>
       <TableCell>
-        <Button
-          className="h-auto min-w-7 justify-start px-1 font-semibold text-primary"
+        <InteractiveCell
+          className="w-full"
+          label={`#${String(contract.folder).replace(/^#/, "")}`}
           onClick={() => onOpenContract?.(contract)}
-          size="xs"
-          variant="ghost"
-        >
-          {contract.folder}
-        </Button>
+        />
       </TableCell>
       <TableCell className={expired ? "text-destructive" : undefined}>
         {contract.end}
       </TableCell>
       <TableCell>
-        <Button
-          className="h-auto max-w-full justify-start px-1 font-semibold text-primary"
+        <InteractiveCell
+          className="w-full"
+          label={contract.address}
           onClick={() => onOpenProperty?.(contract)}
-          size="xs"
-          variant="ghost"
-        >
-          <span className="truncate">{contract.address}</span>
-        </Button>
+        />
       </TableCell>
       <TableCell>
         <Badge variant={expired ? "destructive" : "secondary"}>
@@ -277,28 +272,14 @@ function PersonCell({ name, onOpen, onOpenBook }) {
 
   return (
     <TableCell>
-      <div className="flex min-w-0 items-center gap-2">
-        <Button
-          aria-label={t("actions.openRecord")}
-          onClick={onOpenBook}
-          size="icon-sm"
-          variant="ghost"
-        >
-          <BookOpen />
-        </Button>
-        {onOpen ? (
-          <Button
-            className="h-auto min-w-0 justify-start px-1"
-            onClick={onOpen}
-            size="xs"
-            variant="ghost"
-          >
-            <span className="truncate">{name}</span>
-          </Button>
-        ) : (
-          <span className="truncate">{name}</span>
-        )}
-      </div>
+      <InteractiveCell
+        className="w-full"
+        icon={BookOpen}
+        iconLabel={t("actions.openRecord")}
+        label={name}
+        onClick={onOpen}
+        onIconClick={onOpenBook}
+      />
     </TableCell>
   )
 }
