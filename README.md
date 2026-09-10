@@ -1,35 +1,70 @@
 # Roark System
 
-Sistema web con API y frontend en workspaces npm.
+Sistema web con frontend React/Vite, API NestJS y PostgreSQL.
 
-## Levantar el entorno local
+## Entornos
 
-1. Levantar PostgreSQL:
+- Produccion: `https://app.roark.uno`
+- Desarrollo Docker: `http://dev.roark.uno` o `http://localhost:5173`
+- API dev directa: `http://localhost:3000`
+
+Cada entorno usa su propia base y volumen:
+
+| Entorno | Base | Volumen | Puerto Postgres |
+| --- | --- | --- | --- |
+| Produccion | `db_roark_prod` | `data_roark_prod` | `5432` |
+| Desarrollo | `db_roark_dev` | `data_roark_dev` | `5433` |
+
+## Arranque Rapido
+
+Produccion:
 
 ```bash
-cd ~/dev/postgres_docker
 docker compose up -d
 ```
 
-2. Levantar la API:
+Desarrollo con hot reload:
 
 ```bash
-cd ~/dev/roark-system
-npm run dev:api
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-3. En otra terminal, levantar el frontend:
+Seed de datos demo en desarrollo:
 
 ```bash
-cd ~/dev/roark-system
-npm run dev:host -w @roark/web
+docker compose -f docker-compose.dev.yml exec -T api npm run db:seed -w @roark/api
 ```
 
-El frontend usa `VITE_API_URL` desde `apps/web/.env`. Hoy apunta a
-`http://roark.uno:3000`; si entras por IP y falla alguna llamada a la API,
-cambialo a `http://200.58.96.246:3000` y reinicia Vite.
+Apagar solo desarrollo:
 
-## Base de datos
+```bash
+docker compose -f docker-compose.dev.yml down
+```
 
-La guia completa de configuracion, migraciones y seed esta en
-[`docs/database.md`](docs/database.md).
+## Documentacion
+
+- [Desarrollo](docs/development.md): como correr hot reload, URLs, DNS dev y variables locales.
+- [Produccion](docs/production.md): compose productivo, Nginx, certificados y verificaciones.
+- [Base de datos](docs/database.md): bases, volumenes, migraciones, seed y backups.
+- [Mantenimiento](docs/maintenance.md): limpieza de recursos viejos y comandos de diagnostico.
+
+## Estructura Docker
+
+- `docker-compose.yml`: stack productivo.
+- `docker-compose.dev.yml`: stack dev separado, con `name: roark-system-dev`.
+- `Dockerfile.api`: build productivo del API.
+- `Dockerfile.nginx`: build productivo del frontend + Nginx.
+- `Dockerfile.dev`: imagen Node para desarrollo con hot reload.
+
+## DNS
+
+Registros esperados:
+
+```text
+A app.roark.uno 200.58.96.246
+A dev.roark.uno 200.58.96.246
+A roark.uno 200.58.96.246
+CNAME www.roark.uno roark.uno
+```
+
+`app.roark.uno` usa HTTPS. `dev.roark.uno` esta configurado por HTTP; para HTTPS en dev hay que emitir un certificado adicional.

@@ -1225,19 +1225,6 @@ function formatDateValue(date) {
   return new Intl.DateTimeFormat("es-AR").format(date)
 }
 
-function addMonths(dateValue, amount) {
-  const [day, month, year] = dateValue.split("/").map(Number)
-  const date = new Date(year, month - 1, day)
-
-  if (Number.isNaN(date.getTime())) {
-    return dateValue
-  }
-
-  date.setMonth(date.getMonth() + amount)
-
-  return new Intl.DateTimeFormat("es-AR").format(date)
-}
-
 function calculateEndDate(startDateValue, installmentsValue) {
   const startDate = parseDateValue(startDateValue)
   const installments = Number(installmentsValue)

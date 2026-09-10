@@ -107,6 +107,7 @@ function RentSettlement({ contract, onBack }) {
         : t("rentSettlement.totals.balance")
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContractSettings(contract.settings ?? {})
   }, [contract.id, contract.settings])
 
@@ -168,6 +169,7 @@ function RentSettlement({ contract, onBack }) {
 
   useEffect(() => {
     saveRegularConcepts(contract.id, regularConcepts)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContractSettings((currentSettings) => {
       const nextSettings = {
         ...currentSettings,
@@ -2229,4 +2231,5 @@ function notifyReceiptsChanged(detail) {
   window.dispatchEvent(new CustomEvent("roark:receipts-changed", { detail }))
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { createSettlementPdf, RentSettlement }

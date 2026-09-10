@@ -1,0 +1,83 @@
+name: roark-system-dev
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: roark
+      POSTGRES_DB: db_roark_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - data_roark_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d db_roark_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - roark_dev
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    user: "${UID:-1001}:${GID:-1001}"
+    command: sh -c "npm run db:generate -w @roark/api && cd apps/api && npx prisma migrate deploy && cd /app && npm run dev:api"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      DATABASE_URL: "postgresql://admin:roark@postgres:5432/db_roark_dev"
+      HOME: "/tmp"
+      PORT: "3000"
+      TSC_WATCHFILE: "PriorityPollingInterval"
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    networks:
+      roark_dev:
+        aliases:
+          - roark_dev_api
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    user: "${UID:-1001}:${GID:-1001}"
+    command: npm run dev:host -w @roark/web
+    depends_on:
+      - api
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      HOME: "/tmp"
+      VITE_API_URL: "http://dev.roark.uno/api"
+    expose:
+      - "5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    networks:
+      roark_dev:
+        aliases:
+          - roark_dev_web
+
+networks:
+  roark_dev:
+    name: roark_dev
+    external: true
+
+volumes:
+  data_roark_dev:
+    name: data_roark_dev
+    external: true
+  node_modules:

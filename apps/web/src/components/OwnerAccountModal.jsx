@@ -101,6 +101,7 @@ function OwnerAccountModal({ contract, onClose }) {
   useEffect(() => {
     let ignore = false
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     syncItemsFromReceipts().catch(() => {
       if (!ignore) {
         setItems(uniqueOwnerAccountItems(loadOwnerAccountDraft(contract.id)))
@@ -852,12 +853,6 @@ function isRentInstallment(description) {
   return /alquiler\s+cuota/i.test(description)
 }
 
-function hasReceiptForCurrentMonth(receipts, currentDate) {
-  const currentMonth = getMonthKey(currentDate)
-
-  return receipts.some((receipt) => getMonthKey(receipt.receiptDate) === currentMonth)
-}
-
 function getOwnerSettledItemKeys(receipts) {
   const keys = new Set()
 
@@ -924,4 +919,5 @@ function getMonthKey(dateText) {
   return `${year}-${month}`
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { createOwnerAccountPdf, OwnerAccountModal }

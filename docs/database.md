@@ -1,147 +1,31 @@
-# Database setup
+# Base De Datos
 
-This project targets PostgreSQL 18.4 for local development.
+## Bases y volumenes
 
-Recommended local values:
+| Entorno | Base | Volumen | Puerto host | Compose |
+| --- | --- | --- | --- | --- |
+| Produccion | `db_roark_prod` | `data_roark_prod` | `5432` | `docker-compose.yml` |
+| Desarrollo | `db_roark_dev` | `data_roark_dev` | `5433` | `docker-compose.dev.yml` |
 
-```txt
-Database: roark_system
-Application user: roark
-Password: choose your own local password
-Port: 5432
+Ambas bases usan PostgreSQL 16 y credenciales actuales:
+
+```text
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=roark
 ```
 
-Do not commit real passwords. Store them only in `apps/api/.env`.
+Dentro de Docker, las APIs conectan al host de servicio `postgres:5432`. Desde el host:
 
-## API environment
-
-Create the API env file:
-
-```bash
-cp apps/api/.env.example apps/api/.env
+```text
+Produccion: postgresql://admin:roark@localhost:5432/db_roark_prod
+Desarrollo: postgresql://admin:roark@localhost:5433/db_roark_dev
 ```
 
-Set your local password:
+## Migraciones
 
-```env
-DATABASE_URL="postgresql://roark:YOUR_PASSWORD@localhost:5432/roark_system?schema=public"
-PORT=3000
-```
+Prisma maneja el schema desde `apps/api/prisma/schema.prisma` y `apps/api/prisma/migrations`.
 
-## Windows setup with DBeaver
-
-Use this path if PostgreSQL is installed on Windows and you prefer creating the
-database manually.
-
-1. Open DBeaver and connect as the PostgreSQL admin user, usually `postgres`.
-2. Open a SQL editor connected to the default `postgres` database.
-3. Create the application user:
-
-```sql
-CREATE ROLE roark WITH LOGIN PASSWORD 'YOUR_PASSWORD';
-```
-
-If the role already exists:
-
-```sql
-ALTER ROLE roark WITH LOGIN PASSWORD 'YOUR_PASSWORD';
-```
-
-4. Create the project database:
-
-```sql
-CREATE DATABASE roark_system OWNER roark;
-```
-
-If the database already exists:
-
-```sql
-ALTER DATABASE roark_system OWNER TO roark;
-GRANT ALL PRIVILEGES ON DATABASE roark_system TO roark;
-```
-
-5. Connect DBeaver to `roark_system` and run:
-
-```sql
-ALTER SCHEMA public OWNER TO roark;
-GRANT ALL ON SCHEMA public TO roark;
-```
-
-6. Update `apps/api/.env` with the same password.
-7. Run migrations:
-
-```bash
-npm run db:migrate -w @roark/api
-```
-
-If the API runs from WSL but PostgreSQL runs on Windows, `localhost` may not
-resolve to the Windows PostgreSQL server. The simplest development setup is to
-run PostgreSQL in the same environment where you run the API.
-
-## Linux or WSL setup
-
-Use this path if PostgreSQL runs inside Linux/WSL.
-
-Install PostgreSQL and the client:
-
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-client
-sudo service postgresql start
-```
-
-Create the database and role:
-
-```bash
-sudo -u postgres psql
-```
-
-Then run:
-
-```sql
-CREATE ROLE roark WITH LOGIN PASSWORD 'YOUR_PASSWORD';
-CREATE DATABASE roark_system OWNER roark;
-ALTER ROLE roark CREATEDB;
-\c roark_system
-ALTER SCHEMA public OWNER TO roark;
-GRANT ALL ON SCHEMA public TO roark;
-```
-
-Exit `psql`:
-
-```sql
-\q
-```
-
-Update `apps/api/.env`, then run migrations:
-
-```bash
-npm run db:migrate -w @roark/api
-```
-
-`ALTER ROLE roark CREATEDB` is needed for local development because
-`prisma migrate dev` creates a temporary shadow database to validate migrations.
-
-## Optional setup script
-
-There is also a helper script for Linux/WSL environments with `psql` available:
-
-```bash
-ROARK_DB_PASSWORD="YOUR_PASSWORD" npm run db:setup
-```
-
-It creates or updates:
-
-- role `roark`;
-- database `roark_system`;
-- schema ownership/privileges.
-- local `CREATEDB` permission for Prisma shadow databases.
-
-## Prisma migrations
-
-Prisma owns the application database schema and migrations.
-
-Common commands:
+Comandos habituales:
 
 ```bash
 npm run db:generate -w @roark/api
@@ -150,60 +34,80 @@ npm run db:seed -w @roark/api
 npm run db:studio -w @roark/api
 ```
 
-The initial migration creates:
-
-- `people`
-- `tenants`
-- `owners`
-- `properties`
-- `contracts`
-
-`people.dni` is unique. `tenants.personId` and `owners.personId` are unique and
-reference `people.id`, so a person can have one tenant profile and one owner
-profile for now.
-
-## Seed data
-
-The initial seed migrates the current hardcoded sample contracts into the
-database:
-
-```bash
-npm run db:seed -w @roark/api
-```
-
-The seed is idempotent and creates sample people, tenants, owners, properties,
-and contracts. It uses stable demo DNI values because the old hardcoded frontend
-data does not include real DNI values yet.
-
-## Production notes
-
-Do not use the local development permissions as-is in production.
-
-Recommended production split:
-
-- migration/deploy user: can run schema migrations;
-- application user: can only read/write application data.
-
-The application runtime user should not need `CREATEDB`.
-
-In production, prefer:
+En Docker dev, el API ejecuta al arrancar:
 
 ```bash
 npm run db:generate -w @roark/api
-npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+cd apps/api && npx prisma migrate deploy
 ```
 
-`prisma migrate deploy` applies already-created migrations and does not use the
-development shadow database workflow. It should be executed by a deployment
-process or migration user with the minimum schema privileges required for the
-release.
+Eso aplica migraciones pendientes sobre `db_roark_dev`.
 
-The API should run with a separate `DATABASE_URL` for the restricted application
-user. That user should not be the database superuser and should not own more
-databases than necessary.
+Para produccion, usar `migrate deploy`, no `migrate dev`:
 
-## TODO
+```bash
+docker compose exec -T api sh -c 'cd apps/api && npx prisma migrate deploy'
+```
 
-- Add `docker-compose.yml` with PostgreSQL for a fully reproducible local setup.
-- Add a one-command setup flow that starts Postgres, waits for readiness, and
-  runs Prisma migrations.
+## Seed
+
+El seed actual carga datos demo de personas, inquilinos, propietarios, propiedades y contratos.
+
+Ejecutar seed en dev:
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T api npm run db:seed -w @roark/api
+```
+
+Evitar correr seed en produccion salvo que sea intencional.
+
+## Verificaciones
+
+Base productiva:
+
+```bash
+docker compose exec -T postgres psql -U admin -d db_roark_prod -c 'select current_database();'
+```
+
+Base dev:
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U admin -d db_roark_dev -c 'select current_database();'
+```
+
+Conteos utiles en dev:
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U admin -d db_roark_dev -c 'select count(*) from people;'
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U admin -d db_roark_dev -c 'select count(*) from properties;'
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U admin -d db_roark_dev -c 'select count(*) from contracts;'
+```
+
+## Backups
+
+Backup productivo:
+
+```bash
+docker compose exec -T postgres pg_dump -U admin -d db_roark_prod > backup_db_roark_prod.sql
+```
+
+Restore productivo desde un dump SQL:
+
+```bash
+docker compose exec -T postgres psql -U admin -d db_roark_prod < backup_db_roark_prod.sql
+```
+
+Backup dev:
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T postgres pg_dump -U admin -d db_roark_dev > backup_db_roark_dev.sql
+```
+
+## Volumenes viejos
+
+Estos volumenes quedaron como respaldo de la migracion de nombres:
+
+- `postgres_docker_postgres_data`
+- `roark-system-dev_postgres_dev_data`
+
+No son usados por los compose actuales. Se pueden borrar manualmente cuando confirmes que `data_roark_prod` y `data_roark_dev` estan correctos y respaldados.

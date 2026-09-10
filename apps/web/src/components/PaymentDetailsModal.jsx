@@ -272,6 +272,7 @@ function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
         : ""
 
     if (savedPdfUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPdfUrl(savedPdfUrl)
       return undefined
     }

@@ -13,7 +13,6 @@
     "build": "npm run build --workspaces",
     "build:web": "npm run build -w @roark/web",
     "build:api": "npm run build -w @roark/api",
-    "db:setup": "bash scripts/setup-database.sh",
     "lint": "npm run lint --workspaces",
     "lint:web": "npm run lint -w @roark/web",
     "lint:api": "npm run lint -w @roark/api",
