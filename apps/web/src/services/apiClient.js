@@ -7,9 +7,11 @@ async function apiRequest(path, options = {}) {
       ...options.headers,
     },
     ...options,
+    credentials: "include",
   })
 
   if (!response.ok) {
+    if (response.status === 401 && path !== "/auth/login") window.dispatchEvent(new Event("auth-expired"))
     const message = await readErrorMessage(response)
     throw new Error(message || "API request failed")
   }
