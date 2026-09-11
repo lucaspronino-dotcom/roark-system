@@ -23,7 +23,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: docker/dev/Dockerfile
     user: "${UID:-1001}:${GID:-1001}"
     command: sh -c "npm run db:generate -w @roark/api && cd apps/api && npx prisma migrate deploy && cd /app && npm run dev:api"
     depends_on:
@@ -50,7 +50,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: docker/dev/Dockerfile
     user: "${UID:-1001}:${GID:-1001}"
     command: npm run dev:host -w @roark/web
     depends_on:

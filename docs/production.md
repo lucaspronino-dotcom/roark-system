@@ -17,7 +17,7 @@ Servicios en `docker-compose.yml`:
 - `nginx`: sirve el frontend compilado y proxya `/api`.
 - `certbot`: renueva certificados Let's Encrypt.
 
-El frontend productivo no usa Vite. `Dockerfile.nginx` compila `apps/web` y copia `apps/web/dist` a Nginx.
+El frontend productivo no usa Vite. `docker/nginx/Dockerfile` compila `apps/web` y copia `apps/web/dist` a Nginx.
 
 ## Levantar o actualizar
 

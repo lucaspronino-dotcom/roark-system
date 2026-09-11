@@ -52,9 +52,9 @@ docker compose -f docker-compose.dev.yml down
 
 - `docker-compose.yml`: stack productivo.
 - `docker-compose.dev.yml`: stack dev separado, con `name: roark-system-dev`.
-- `Dockerfile.api`: build productivo del API.
-- `Dockerfile.nginx`: build productivo del frontend + Nginx.
-- `Dockerfile.dev`: imagen Node para desarrollo con hot reload.
+- `docker/api/Dockerfile`: build productivo del API.
+- `docker/nginx/Dockerfile`: build productivo del frontend + Nginx.
+- `docker/dev/Dockerfile`: imagen Node para desarrollo con hot reload.
 
 ## DNS
 

@@ -21,7 +21,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: docker/api/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -39,7 +39,7 @@ services:
   nginx:
     build:
       context: .
-      dockerfile: Dockerfile.nginx
+      dockerfile: docker/nginx/Dockerfile
       args:
         VITE_API_URL: "https://app.roark.uno/api"
     restart: unless-stopped
