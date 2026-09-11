@@ -21,6 +21,129 @@ Produccion: postgresql://admin:roark@localhost:5432/db_roark_prod
 Desarrollo: postgresql://admin:roark@localhost:5433/db_roark_dev
 ```
 
+## Diagrama entidad-relación
+
+Esquema de la rama `dev`, definido en [schema.prisma](../apps/api/prisma/schema.prisma), incluyendo usuarios y sesiones. Los nombres corresponden a las tablas de PostgreSQL.
+
+`PK`: clave primaria. `FK`: clave foránea. `UK`: campo único. `||`: exactamente uno. `o|`: cero o uno. `o{`: cero o muchos.
+
+```mermaid
+erDiagram
+    people ||--o| tenants : "puede ser"
+    people ||--o| owners : "puede ser"
+    properties ||--o{ property_owners : tiene
+    owners ||--o{ property_owners : participa
+    properties ||--o{ contracts : tiene
+    tenants ||--o{ contracts : alquila
+    owners ||--o{ contracts : firma
+    contracts ||--o{ receipts : genera
+    users ||--o{ sessions : inicia
+
+    people {
+        uuid id PK
+        string firstName
+        string lastName
+        string dni UK
+        string phone
+        string email "Opcional"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    tenants {
+        uuid id PK
+        uuid personId FK, UK
+        string rentalAddress
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    owners {
+        uuid id PK
+        uuid personId FK, UK
+        string address
+        string city
+        string transferAliasOrCbu "Opcional"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    properties {
+        uuid id PK
+        string folder
+        string address
+        string type
+        string status
+        string city
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    property_owners {
+        uuid id PK
+        uuid propertyId FK
+        uuid ownerId FK
+        boolean isPrimary
+        float participation
+        float administration
+        float commission
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    contracts {
+        uuid id PK
+        string folder
+        datetime startDate
+        datetime endDate
+        ContractStatus status "ACTIVE | EXPIRED"
+        uuid propertyId FK
+        uuid tenantId FK
+        uuid ownerId FK
+        json settings "Opcional"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    receipts {
+        uuid id PK
+        int number UK
+        ReceiptKind kind "OWNER_SETTLEMENT | TENANT_SETTLEMENT"
+        datetime date
+        float total
+        float paid
+        float balance
+        string personName
+        uuid contractId FK
+        string pdfBase64
+        json snapshot
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    users {
+        uuid id PK
+        string username UK
+        string passwordHash
+        boolean active
+        datetime createdAt
+    }
+
+    sessions {
+        uuid id PK
+        string tokenHash UK
+        uuid userId FK
+        datetime expiresAt
+    }
+```
+
+Restricciones únicas compuestas:
+
+- `properties(folder, address)`.
+- `property_owners(propertyId, ownerId)`.
+
+Los usuarios de acceso son independientes de las personas, propietarios e inquilinos. Consultar [Autenticación](authentication.md) para el funcionamiento de las sesiones.
+
 ## Migraciones
 
 Prisma maneja el schema desde `apps/api/prisma/schema.prisma` y `apps/api/prisma/migrations`.
