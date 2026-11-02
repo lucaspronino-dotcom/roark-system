@@ -23,11 +23,19 @@ El frontend productivo no usa Vite. `docker/nginx/Dockerfile` compila `apps/web`
 
 ```bash
 cd ~/dev/roark-system
-docker compose config
+docker compose config --quiet
 docker compose build
 docker compose run --rm --no-deps nginx nginx -t
 docker compose up -d --remove-orphans
 ```
+
+## Acceso al sistema
+
+El servicio `api` permite el origen `https://app.roark.uno` mediante `AUTH_ALLOWED_ORIGINS` y exige HTTPS para la cookie de sesión con `AUTH_COOKIE_SECURE=true`. Al cambiar estas variables, ejecutar `docker compose up -d api` para recrear el servicio con la configuración actualizada.
+
+Las cuentas de la aplicación se crean manualmente en la base productiva y persisten en su volumen; no se definen en Compose. Las credenciales de conexión de PostgreSQL son independientes del inicio de sesión de la aplicación. Consultar [Acceso al sistema](authentication.md) para el manejo de usuarios y sesiones.
+
+La validación con `docker compose config --quiet` evita imprimir la configuración resuelta, que puede contener secretos. No compartir salidas con credenciales, cookies o tokens.
 
 ## Verificaciones
 
