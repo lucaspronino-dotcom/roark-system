@@ -11,6 +11,8 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { calculateEndDate } from "@/lib/contractDates"
+
 import { Button } from "@/components/ui/button"
 import { NewPropertyModal } from "@/components/NewPropertyModal"
 import { NewTenantModal } from "@/components/NewTenantModal"
@@ -1223,22 +1225,6 @@ function parseDateValue(value) {
 
 function formatDateValue(date) {
   return new Intl.DateTimeFormat("es-AR").format(date)
-}
-
-function calculateEndDate(startDateValue, installmentsValue) {
-  const startDate = parseDateValue(startDateValue)
-  const installments = Number(installmentsValue)
-
-  if (!startDate || !Number.isFinite(installments) || installments < 1) {
-    return ""
-  }
-
-  const endDate = new Date(startDate)
-
-  endDate.setMonth(endDate.getMonth() + installments - 1)
-  endDate.setDate(endDate.getDate() - 1)
-
-  return formatDateValue(endDate)
 }
 
 function getPeriodRows(installmentsValue, adjustmentValue) {

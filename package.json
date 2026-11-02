@@ -16,7 +16,8 @@
     "lint": "npm run lint --workspaces",
     "lint:web": "npm run lint -w @roark/web",
     "lint:api": "npm run lint -w @roark/api",
-    "preview:web": "npm run preview -w @roark/web"
+    "preview:web": "npm run preview -w @roark/web",
+    "test:web": "npm run test -w @roark/web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
