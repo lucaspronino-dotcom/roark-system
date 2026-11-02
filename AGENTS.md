@@ -14,6 +14,8 @@ Sistema inmobiliario centrado en contratos, liquidación mensual de alquileres, 
 
 - La liquidación mensual del locatario es el núcleo del sistema. Los conceptos e importes son dinámicos y pueden variar cada mes, incluidos descuentos, bonificaciones, punitorios y conceptos extraordinarios.
 - Los recibos históricos conservan el snapshot y el PDF generado. Nunca recalcularlos ni modificarlos automáticamente al cambiar un contrato o sus conceptos.
+- La liquidación de alquiler muestra los meses impagos desde el inicio hasta el mes actual inclusive, sin superar la fecha de fin del contrato. El botón «Pagar el próximo período» permite adelantar manualmente el mes seleccionado, también limitado por el fin del contrato; no eliminarlo al limitar la vista inicial al mes actual. Un contrato vencido totalmente pagado no genera conceptos; los saldos de pagos parciales siguen pendientes. La existencia de un recibo del mes actual no debe ocultar deudas anteriores.
+- Si al guardar la ficha se elige eliminar períodos anteriores, respetar `settings.periods.skipPastPeriods` y el mes de corte fijo `pendingFrom`. No avanzar ese corte al cambiar de mes: los impagos posteriores al inicio de administración deben seguir visibles. Los contratos antiguos con solo el booleano toman el mes actual como compatibilidad hasta volver a guardar la ficha, que fija el corte.
 - La liquidación del locador parte de lo cobrado al inquilino y descuenta administración y los conceptos correspondientes.
 - El recibo del locatario se plantea en A4 con una copia para entregar y otra para archivo interno.
 - La búsqueda de contratos contempla carpeta, dirección, inquilino y propietario.

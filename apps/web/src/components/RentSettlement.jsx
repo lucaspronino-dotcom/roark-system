@@ -2,6 +2,8 @@ import { ArrowLeft, Download, Printer, Trash2, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { getPendingRentalDates, getOutstandingRentalBalances, isRentalItemInRange, getNextRentalPeriod } from "@/lib/rentalPeriods"
+
 import { ExtraConcepts } from "@/components/ExtraConcepts"
 import { Button } from "@/components/ui/button"
 import {
@@ -59,9 +61,10 @@ function RentSettlement({ contract, onBack }) {
     createSettlementPeriodItems(
       contract,
       contractStartDate,
-      initialPeriodDate,
       [],
       initialRegularConcepts,
+      todayDate,
+      initialPeriodDate,
     ),
   )
   const [regularConcepts, setRegularConcepts] = useState(initialRegularConcepts)
@@ -78,11 +81,11 @@ function RentSettlement({ contract, onBack }) {
   const [isRenewalReceiptWarningOpen, setIsRenewalReceiptWarningOpen] = useState(false)
   const [noticeMessage, setNoticeMessage] = useState("")
   const [isDraftLoaded, setIsDraftLoaded] = useState(false)
-  const [shouldIncludePendingPeriods, setShouldIncludePendingPeriods] = useState(true)
   const effectiveContract = useMemo(
     () => ({ ...contract, settings: contractSettings }),
     [contract, contractSettings],
   )
+  const nextPeriodDate = getNextRentalPeriod(effectiveContract, periodDate)
   const currentDate = new Intl.DateTimeFormat("es-AR").format(todayDate)
   const surchargeSettings = getContractSurchargeSettings(effectiveContract)
   const installmentNumber = getInstallmentNumber(contractStartDate, periodDate)
@@ -90,7 +93,7 @@ function RentSettlement({ contract, onBack }) {
   const periodReceipt = findReceiptForPeriod(receipts, periodDate)
   const isRenewalReceiptAllowed =
     periodReceipt && isReceiptBeforeContractStart(periodReceipt, contractStartDate)
-  const isPeriodLocked = Boolean(periodReceipt && !isRenewalReceiptAllowed)
+  const isPeriodLocked = isDraftLoaded && items.length === 0
   const visibleItems = isPeriodLocked ? [] : items
   const total = visibleItems.reduce(
     (sum, item) =>
@@ -126,10 +129,10 @@ function RentSettlement({ contract, onBack }) {
         const baseItems = createSettlementPeriodItems(
           effectiveContract,
           contractStartDate,
-          periodDate,
           receipts,
           regularConcepts,
-          shouldIncludePendingPeriods,
+          todayDate,
+          periodDate,
         )
         const draft = loadSettlementDraft(contract.id, periodDate)
         const processedItemKeys = getProcessedTenantItemKeys(
@@ -142,7 +145,12 @@ function RentSettlement({ contract, onBack }) {
         const hasDraft = Boolean(draft)
 
         setReceipts(receipts)
-        setItems(draftItems)
+        setItems(draftItems.filter((item) =>
+          baseItems.some((baseItem) => getTenantItemKey(baseItem) === getTenantItemKey(item)) ||
+          (!isRentInstallment(item.description) &&
+            !/^saldo /i.test(item.description) &&
+            isRentalItemInRange(item, effectiveContract, todayDate, periodDate)),
+        ))
         setNotes(hasDraft ? draft.notes : [])
         setNoteText(hasDraft ? draft.noteText : "")
         setPaidAmount(hasDraft ? draft.paidAmount : null)
@@ -157,6 +165,7 @@ function RentSettlement({ contract, onBack }) {
       ignore = true
     }
   }, [
+    todayDate,
     contract,
     contract.id,
     contract.tenant,
@@ -164,7 +173,6 @@ function RentSettlement({ contract, onBack }) {
     effectiveContract,
     periodDate,
     regularConcepts,
-    shouldIncludePendingPeriods,
   ])
 
   useEffect(() => {
@@ -462,23 +470,11 @@ function RentSettlement({ contract, onBack }) {
   }
 
   function payNextPeriod() {
-    const nextPeriodDate = addMonths(periodDate, 1)
-
+    if (!nextPeriodDate || !isDraftLoaded || isSavingReceipt) return
     setIsDraftLoaded(false)
-    setShouldIncludePendingPeriods(true)
     setPeriodDate(nextPeriodDate)
-    setItems(
-      createSettlementPeriodItems(
-        effectiveContract,
-        contractStartDate,
-        nextPeriodDate,
-        receipts,
-        regularConcepts,
-        true,
-      ),
-    )
-    setDeletedDraftItemKeys([])
     setPaidAmount(null)
+    setDeletedDraftItemKeys([])
     setActiveTab("account")
   }
 
@@ -583,12 +579,9 @@ function RentSettlement({ contract, onBack }) {
                       <TableRow>
                         <TableCell colSpan={9}>
                           <div className="flex min-h-48 flex-col items-center justify-center gap-8 text-center">
-                            <p className="text-2xl font-semibold text-destructive">
-                              ¡El recibo del mes {getMonthName(periodDate)} ya ha sido generado!
+                            <p className="text-lg font-medium text-muted-foreground">
+                              No hay períodos pendientes de liquidación.
                             </p>
-                            <Button onClick={payNextPeriod} size="lg">
-                              Pagar el proximo periodo
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -693,17 +686,18 @@ function RentSettlement({ contract, onBack }) {
                     value={formatCurrency(balance)}
                   />
                   <Button
+                    disabled={!nextPeriodDate || !isDraftLoaded || isSavingReceipt}
                     onClick={payNextPeriod}
                     size="lg"
                     type="button"
                     variant={isPeriodLocked ? "default" : "outline"}
                   >
-                    Pagar el proximo periodo
+                    Pagar el próximo período
                   </Button>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
                       className="order-1 bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                      disabled={isPeriodLocked}
+                      disabled={!isDraftLoaded || isPeriodLocked}
                       onClick={printSettlement}
                     >
                       <Printer />
@@ -711,7 +705,7 @@ function RentSettlement({ contract, onBack }) {
                     </Button>
                     <Button
                       className="order-2"
-                      disabled={isSavingReceipt || isPeriodLocked}
+                      disabled={!isDraftLoaded || isSavingReceipt || isPeriodLocked}
                       onClick={confirmAndPrintReceipt}
                     >
                       <Printer />
@@ -1647,74 +1641,15 @@ function uniqueOwnerAccountDraftItems(items) {
 function createSettlementPeriodItems(
   contract,
   contractStartDate,
-  periodDate,
   receipts = [],
   regularConcepts = [],
-  includePendingPeriods = true,
+  today = new Date(),
+  throughDate = today,
 ) {
-  if (includePendingPeriods && contract?.settings?.periods?.skipPastPeriods === false) {
-    return createPendingPeriodItems(
-      contract,
-      contractStartDate,
-      periodDate,
-      receipts,
-      regularConcepts,
-    )
-  }
-
-  return createPeriodItems(
-    periodDate,
-    receipts,
-    contractStartDate,
-    regularConcepts,
-    contract,
+  const pendingItems = getPendingRentalDates(contract, receipts, today, throughDate).flatMap((date) =>
+    createPeriodItems(date, receipts, contractStartDate, regularConcepts, contract),
   )
-}
-
-function createPendingPeriodItems(
-  contract,
-  contractStartDate,
-  periodDate,
-  receipts = [],
-  regularConcepts = [],
-) {
-  if (
-    Number.isNaN(contractStartDate.getTime()) ||
-    Number.isNaN(periodDate.getTime())
-  ) {
-    return createPeriodItems(
-      periodDate,
-      receipts,
-      contractStartDate,
-      regularConcepts,
-      contract,
-    )
-  }
-
-  const pendingItems = []
-  let cursorDate = new Date(
-    contractStartDate.getFullYear(),
-    contractStartDate.getMonth(),
-    contractStartDate.getDate(),
-  )
-
-  while (cursorDate <= periodDate) {
-    if (!hasReceiptForPeriod(receipts, cursorDate)) {
-      pendingItems.push(
-        ...createPeriodItems(
-          cursorDate,
-          receipts,
-          contractStartDate,
-          regularConcepts,
-          contract,
-        ),
-      )
-    }
-
-    cursorDate = addMonths(cursorDate, 1)
-  }
-
-  return pendingItems
+  return [...getOutstandingRentalBalances(receipts), ...pendingItems]
 }
 
 function readOwnerAccountDraft(key) {
@@ -1756,14 +1691,13 @@ function createPeriodItems(
     createRegularConceptItem(concept, periodDate),
   )
 
-  const carryoverItem = createCarryoverBalanceItem(receipts, periodDate, dueDate)
   const processedItemKeys = getProcessedTenantItemKeys(contract, receipts)
 
   const periodItems = [...regularConceptItems, ...items].filter(
     (item) => !processedItemKeys.has(getTenantItemKey(item)),
   )
 
-  return carryoverItem ? [carryoverItem, ...periodItems] : periodItems
+  return periodItems
 }
 
 function createRegularConceptItem(concept, periodDate) {
@@ -1780,10 +1714,6 @@ function createRegularConceptItem(concept, periodDate) {
     isRegularConcept: true,
     penalty: "$ 0,00",
   }
-}
-
-function hasReceiptForPeriod(receipts, periodDate) {
-  return Boolean(findReceiptForPeriod(receipts, periodDate))
 }
 
 function findReceiptForPeriod(receipts, periodDate) {
@@ -1829,24 +1759,6 @@ function getMonthKeyFromDate(date) {
   return `${date.getFullYear()}-${date.getMonth() + 1}`
 }
 
-function createCarryoverBalanceItem(receipts, periodDate, dueDate) {
-  const previousPeriodDate = addMonths(periodDate, -1)
-  const previousReceipt = findReceiptForPeriod(receipts, previousPeriodDate)
-  const previousBalance = Number(previousReceipt?.balance ?? 0)
-
-  if (previousBalance <= 0) {
-    return null
-  }
-
-  return {
-    apply: true,
-    dueDate,
-    description: `saldo del mes ${getMonthName(previousPeriodDate)}/${previousPeriodDate.getFullYear()}`,
-    edit: previousBalance,
-    penalty: "$ 0,00",
-  }
-}
-
 function parseEsDate(dateText) {
   const [day, month, year] = String(dateText).split("/").map(Number)
 
@@ -1858,28 +1770,11 @@ function getCurrentPeriodDate(contractStartDate, todayDate) {
     return parseEsDate(settlementItems[0].dueDate)
   }
 
-  const normalizedToday = new Date(
-    todayDate.getFullYear(),
-    todayDate.getMonth(),
-    todayDate.getDate(),
-  )
   const currentMonthDueDate = createDateWithContractDay(
     todayDate.getFullYear(),
     todayDate.getMonth(),
     contractStartDate.getDate(),
   )
-
-  if (normalizedToday < contractStartDate) {
-    return new Date(contractStartDate)
-  }
-
-  if (normalizedToday < currentMonthDueDate) {
-    return createDateWithContractDay(
-      todayDate.getFullYear(),
-      todayDate.getMonth() - 1,
-      contractStartDate.getDate(),
-    )
-  }
 
   return currentMonthDueDate
 }
@@ -2010,10 +1905,6 @@ function getAdjustmentNotice(contract, installmentNumber) {
   }
 
   return `El proximo periodo tiene ajuste a partir de la cuota ${installmentNumber + 1}.`
-}
-
-function addMonths(date, amount) {
-  return new Date(date.getFullYear(), date.getMonth() + amount, date.getDate())
 }
 
 function getConceptName(description) {

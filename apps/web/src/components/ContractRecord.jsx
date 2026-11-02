@@ -11,6 +11,8 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { resolvePeriodPreferences } from "@/lib/periodPreferences"
+
 import { calculateEndDate } from "@/lib/contractDates"
 
 import { Button } from "@/components/ui/button"
@@ -335,12 +337,9 @@ function ContractRecord({ contract, onBack, onSaved }) {
         periodRows,
         periodValues,
         surchargeSettings,
-	        terminationDate,
-	        skipPastPeriods:
-	          skipPastPeriods ??
-	          contractSettings.periods.skipPastPeriods ??
-	          false,
-	      })
+        terminationDate,
+        ...resolvePeriodPreferences(contractSettings.periods, skipPastPeriods),
+      })
       const payload = {
         endDate: form.endDate,
         folder: assignedFolder,
@@ -1272,6 +1271,7 @@ function getContractSettings(contract) {
       installments: periods.installments ?? "24",
       rows: Array.isArray(periods.rows) ? periods.rows : [],
       skipPastPeriods: periods.skipPastPeriods ?? false,
+      pendingFrom: periods.pendingFrom ?? null,
     },
     surcharges: {
       chargeFromDay:
@@ -1305,6 +1305,7 @@ function buildContractSettings({
   periodValues,
   surchargeSettings,
   skipPastPeriods = false,
+  pendingFrom = null,
   terminationDate,
 }) {
   return {
@@ -1318,6 +1319,7 @@ function buildContractSettings({
         untilInstallment,
       })),
       skipPastPeriods,
+      pendingFrom,
     },
     surcharges: surchargeSettings,
     termination: {
