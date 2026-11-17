@@ -10,8 +10,8 @@ export class CreateOwnerDto {
   lastName: string
 
   @IsString()
-  @IsNotEmpty()
-  dni: string
+  @IsOptional()
+  dni?: string | null
 
   @IsString()
   @IsNotEmpty()

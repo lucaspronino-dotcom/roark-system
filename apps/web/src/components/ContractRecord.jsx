@@ -1,3 +1,4 @@
+import { normalizeAdministrationStart } from "@/lib/legacyMigration"
 import {
   ArrowLeft,
   CalendarDays,
@@ -61,6 +62,10 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const initialPeriodValues = contractSettings.periods.rows
   const initialSurchargeSettings = contractSettings.surcharges
   const initialTerminationDate = contractSettings.termination.date ?? ""
+  const initialAdministrationStart = contractSettings.periods.pendingFrom ?? ""
+  const [administrationStart, setAdministrationStart] = useState(initialAdministrationStart)
+  const initiallyReviewed = contract.settings?.legacy?.reconciliationRequired !== true
+  const [legacyReviewed, setLegacyReviewed] = useState(initiallyReviewed)
   const [activeTab, setActiveTab] = useState("mainData")
   const [form, setForm] = useState(() => ({
     folder: contract.folder ?? "",
@@ -79,6 +84,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
     initialAdjustmentType,
   )
   const [periodValues, setPeriodValues] = useState(initialPeriodValues)
+  const [hasRenewed, setHasRenewed] = useState(false)
   const [surchargeSettings, setSurchargeSettings] = useState(
     initialSurchargeSettings,
   )
@@ -102,7 +108,13 @@ function ContractRecord({ contract, onBack, onSaved }) {
   const tenantDisplayValue = selectedTenant
     ? formatPersonName(selectedTenant.person)
     : contract.tenant ?? ""
-  const periodRows = getPeriodRows(Number(installments), Number(adjustmentInterval))
+  const initialPeriodRows = initialPeriodValues.length
+    ? initialPeriodValues.map((row) => row.untilInstallment)
+    : getPeriodRows(Number(initialInstallments), Number(initialAdjustmentInterval))
+  const periodRows = !hasRenewed && String(installments) === String(initialInstallments) &&
+    String(adjustmentInterval) === String(initialAdjustmentInterval)
+    ? initialPeriodRows
+    : getPeriodRows(Number(installments), Number(adjustmentInterval))
   const initialSnapshot = useMemo(
     () =>
       getContractRecordSnapshot({
@@ -119,10 +131,9 @@ function ContractRecord({ contract, onBack, onSaved }) {
           ownerId: contract.ownerId ?? "",
         },
         installments: initialInstallments,
-        periodRows: getPeriodRows(
-          Number(initialInstallments),
-          Number(initialAdjustmentInterval),
-        ),
+        periodRows: initialPeriodValues.length
+          ? initialPeriodValues.map((row) => row.untilInstallment)
+          : getPeriodRows(Number(initialInstallments), Number(initialAdjustmentInterval)),
         periodValues: initialPeriodValues,
         surchargeSettings: initialSurchargeSettings,
         skipPastPeriods: contractSettings.periods.skipPastPeriods,
@@ -156,7 +167,8 @@ function ContractRecord({ contract, onBack, onSaved }) {
     skipPastPeriods: contractSettings.periods.skipPastPeriods,
     terminationDate,
   })
-  const hasUnsavedChanges = currentSnapshot !== initialSnapshot
+  const hasUnsavedChanges = currentSnapshot !== initialSnapshot ||
+    administrationStart !== initialAdministrationStart || legacyReviewed !== initiallyReviewed
 
   useEffect(() => {
     let ignore = false
@@ -315,7 +327,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
     const hasPastPeriodsPreference =
       typeof contract.settings?.periods?.skipPastPeriods === "boolean"
     const shouldConfirmPastPeriods =
-      skipPastPeriods === undefined &&
+      skipPastPeriods === undefined && !administrationStart &&
       isBeforeCurrentMonth(form.startDate) &&
       (!contract.id || form.startDate !== initialStartDate || !hasPastPeriodsPreference)
 
@@ -340,12 +352,20 @@ function ContractRecord({ contract, onBack, onSaved }) {
         terminationDate,
         ...resolvePeriodPreferences(contractSettings.periods, skipPastPeriods),
       })
+      if (administrationStart !== initialAdministrationStart || administrationStart) {
+        settings.periods.skipPastPeriods = Boolean(administrationStart)
+        settings.periods.pendingFrom = normalizeAdministrationStart(administrationStart)
+      }
+      const mergedSettings = { ...contract.settings, ...settings }
+      if (contract.settings?.legacy) {
+        mergedSettings.legacy = { ...contract.settings.legacy, reconciliationRequired: !legacyReviewed }
+      }
       const payload = {
         endDate: form.endDate,
         folder: assignedFolder,
         ownerId: form.ownerId,
         propertyId: form.propertyId,
-        settings,
+        settings: mergedSettings,
         startDate: form.startDate,
         status: form.status,
         tenantId: form.tenantId,
@@ -378,6 +398,7 @@ function ContractRecord({ contract, onBack, onSaved }) {
   }
 
   function confirmRenew() {
+    setHasRenewed(true)
     const renewalDate = formatDateValue(new Date())
     const renewalEndDate = calculateEndDate(renewalDate, installments)
     const renewedPeriodRows = getPeriodRows(
@@ -504,6 +525,36 @@ function ContractRecord({ contract, onBack, onSaved }) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Section title={t("contractRecord.sections.periods")}>
+              <DatePickerField
+                label="Inicio de administración (opcional)"
+                onChange={setAdministrationStart}
+                value={administrationStart}
+              />
+              {contract.settings?.legacy ? (
+                <div className="space-y-2 rounded border p-3 text-sm">
+                  <p>Contrato importado. Revisá importes, conceptos y saldos anteriores antes de liquidar. Sin inicio de administración se consideran todos los períodos del contrato.</p>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={legacyReviewed}
+                      onChange={(event) => setLegacyReviewed(event.target.checked)} />
+                    Saldos y conceptos revisados; habilitar liquidaciones
+                  </label>
+                  <details>
+                    <summary className="cursor-pointer">Conceptos regulares importados ({contract.settings.legacy.fixedConcepts?.length ?? 0})</summary>
+                    <p className="my-2">Se incorporan a Conceptos regulares en la liquidación, respetando vigencia, meses y efectos sobre inquilino y propietario. Para liquidar, primero confirmá la revisión de saldos y conceptos. Esta tabla conserva los valores originales.</p>
+                    <div className="max-h-60 overflow-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead><tr><th>Concepto</th><th>Desde</th><th>Hasta</th><th>Importe original</th><th>Meses</th><th>Inquilino</th><th>Propietario</th></tr></thead>
+                        <tbody>{(contract.settings.legacy.fixedConcepts ?? []).map((concept, index) => (
+                          <tr key={index}><td>{concept.Concepto}</td><td>{concept.Inicio}</td><td>{concept.Fin}</td><td>{concept.Monto}</td>
+                            <td>{['Ene', 'Feb', 'Marz', 'Abr', 'Mayo', 'Jun', 'Jul', 'Ago', 'Sept', 'Oct', 'Nov', 'Dic'].filter((month, i) => Number(concept[month]) === i + 1).join(', ') || 'Ninguno'}</td>
+                            <td>{{ 1: 'Sin efecto', 2: 'Sumar', 3: 'Descontar' }[concept['Pago Inquilino']] ?? 'Revisar'}</td>
+                            <td>{{ 1: 'Sin efecto', 2: 'Sumar', 3: 'Descontar' }[concept['Cobro Propietario']] ?? 'Revisar'}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
               <div className="grid gap-3 md:grid-cols-[160px_70px_110px_55px_120px]">
                 <DatePickerField
                   label={t("contractRecord.fields.start")}

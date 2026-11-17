@@ -1,3 +1,4 @@
+import { normalizeOptionalDni } from "../common/optional-dni"
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common"
 import { Prisma } from "@prisma/client"
 
@@ -44,7 +45,7 @@ export class TenantsService {
             create: {
               firstName: createTenantDto.firstName,
               lastName: createTenantDto.lastName,
-              dni: createTenantDto.dni,
+              dni: normalizeOptionalDni(createTenantDto.dni),
               phone: createTenantDto.phone,
               email: createTenantDto.email,
             },
@@ -69,7 +70,7 @@ export class TenantsService {
             update: {
               firstName: updateTenantDto.firstName,
               lastName: updateTenantDto.lastName,
-              dni: updateTenantDto.dni,
+              dni: normalizeOptionalDni(updateTenantDto.dni),
               phone: updateTenantDto.phone,
               email: updateTenantDto.email,
             },

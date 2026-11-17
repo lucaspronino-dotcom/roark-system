@@ -43,7 +43,7 @@ erDiagram
         uuid id PK
         string firstName
         string lastName
-        string dni UK
+        string dni UK "Opcional; NULL si se desconoce"
         string phone
         string email "Opcional"
         datetime createdAt
@@ -109,13 +109,14 @@ erDiagram
         uuid id PK
         int number UK
         ReceiptKind kind "OWNER_SETTLEMENT | TENANT_SETTLEMENT"
+        ReceiptOrigin origin "NATIVE | LEGACY"
         datetime date
-        float total
-        float paid
-        float balance
+        float total "Opcional en históricos"
+        float paid "Opcional en históricos"
+        float balance "Opcional en históricos"
         string personName
         uuid contractId FK
-        string pdfBase64
+        string pdfBase64 "Opcional; histórico sin PDF original"
         json snapshot
         datetime createdAt
         datetime updatedAt
@@ -139,7 +140,7 @@ erDiagram
 
 Restricciones únicas compuestas:
 
-- `properties(folder, address)`.
+- `properties(folder, address)` es un índice no único: admite inmuebles distintos con igual carpeta y dirección.
 - `property_owners(propertyId, ownerId)`.
 
 Los usuarios de acceso son independientes de las personas, propietarios e inquilinos. Consultar [Autenticación](authentication.md) para el funcionamiento de las sesiones.
@@ -234,3 +235,8 @@ Estos volumenes quedaron como respaldo de la migracion de nombres:
 - `roark-system-dev_postgres_dev_data`
 
 No son usados por los compose actuales. Se pueden borrar manualmente cuando confirmes que `data_roark_prod` y `data_roark_dev` estan correctos y respaldados.
+
+## Migración desde el sistema anterior
+
+Consultar [el relevamiento de BB_DD.ods](legacy-migration.md) para el inventario,
+el mapeo inicial y las decisiones pendientes antes de importar datos reales.

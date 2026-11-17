@@ -132,7 +132,7 @@ export class PropertiesService {
   private handleKnownRequestError(error: unknown): never {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
-        throw new ConflictException("A property with this folder and address already exists")
+        throw new ConflictException("A property owner relationship already exists")
       }
 
       if (error.code === "P2003") {

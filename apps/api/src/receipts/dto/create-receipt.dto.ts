@@ -21,6 +21,14 @@ class ReceiptItemDto {
 
   @IsOptional()
   @IsNumber()
+  ownerAmount?: number
+
+  @IsOptional()
+  @IsString()
+  conceptId?: string
+
+  @IsOptional()
+  @IsNumber()
   administration?: number
 
   @IsOptional()
@@ -51,8 +59,9 @@ export class CreateReceiptDto {
   @IsString()
   personName!: string
 
+  @IsOptional()
   @IsString()
-  pdfBase64!: string
+  pdfBase64?: string
 
   @IsNumber()
   @Min(0)

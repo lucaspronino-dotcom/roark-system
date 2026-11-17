@@ -9,3 +9,6 @@ npm-debug.log*
 Dockerfile*
 docker-compose*.yml
 docker-compose*.yaml
+
+# Datos reales de migracion
+private

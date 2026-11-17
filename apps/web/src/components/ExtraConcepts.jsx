@@ -1,3 +1,4 @@
+import { validateConceptSchedule } from "@/lib/regularConcepts"
 import {
   ArrowLeft,
   BookOpen,
@@ -54,6 +55,7 @@ function ExtraConcepts({
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
   const [tenantEffect, setTenantEffect] = useState("none")
+  const [ownerEffect, setOwnerEffect] = useState("none")
   const [error, setError] = useState("")
   const [selectedConcept, setSelectedConcept] = useState(null)
   const [isNewRegularConceptOpen, setIsNewRegularConceptOpen] = useState(false)
@@ -74,12 +76,15 @@ function ExtraConcepts({
       return
     }
 
-    if (tenantEffect === "addToPayment" || tenantEffect === "discountPayment") {
+    const scheduleError = validateConceptSchedule({ startDate: date })
+    if (scheduleError) { setError(scheduleError); return }
+    if (tenantEffect !== "none" || ownerEffect !== "none") {
       onAddToAccount?.({
         apply: true,
         description: cleanDescription,
         dueDate: date,
-        edit: tenantEffect === "discountPayment" ? -numericAmount : numericAmount,
+        edit: tenantEffect === "none" ? 0 : tenantEffect === "discountPayment" ? -numericAmount : numericAmount,
+        ownerAmount: ownerEffect === "none" ? 0 : ownerEffect === "discountOwner" ? -numericAmount : numericAmount,
         penalty: "$ 0,00",
       })
     }
@@ -88,6 +93,7 @@ function ExtraConcepts({
     setDescription("")
     setError("")
     setTenantEffect("none")
+    setOwnerEffect("none")
   }
 
   function removeConcept(index) {
@@ -120,7 +126,7 @@ function ExtraConcepts({
             </TableHeader>
             <TableBody>
               {visibleConcepts.map((concept, index) => (
-                <TableRow key={concept.detail}>
+                <TableRow key={concept.id ?? `${concept.detail}-${index}`}>
                   <TableCell>
                     <Button
                       aria-label={t("actions.delete")}
@@ -140,6 +146,9 @@ function ExtraConcepts({
                     >
                       {concept.detail}
                     </Button>
+                    {concept.startDate ? <p className="text-xs text-muted-foreground">{concept.startDate} — {concept.endDate || "Sin fin"}</p> : null}
+                    {Array.isArray(concept.selectedMonths) ? <p className="text-xs text-muted-foreground">{concept.selectedMonths.map(month => months[month - 1]).join(", ") || "Sin meses seleccionados"}</p> : null}
+                    {concept.importError ? <p className="text-xs text-destructive">No se aplica: {concept.importError}</p> : null}
                   </TableCell>
                   <TableCell className="text-right">{concept.amount}</TableCell>
                 </TableRow>
@@ -214,9 +223,9 @@ function ExtraConcepts({
             </EffectPanel>
 
             <EffectPanel title={t("extraConcepts.owner.title")}>
-              <RadioOption defaultChecked label={t("extraConcepts.effects.noEffect")} name="owner-effect" />
-              <RadioOption label={t("extraConcepts.effects.addToOwner")} name="owner-effect" />
-              <RadioOption label={t("extraConcepts.effects.discountOwner")} name="owner-effect" />
+              <RadioOption checked={ownerEffect === "none"} onChange={() => setOwnerEffect("none")} label={t("extraConcepts.effects.noEffect")} name="owner-effect" />
+              <RadioOption checked={ownerEffect === "addToOwner"} onChange={() => setOwnerEffect("addToOwner")} label={t("extraConcepts.effects.addToOwner")} name="owner-effect" />
+              <RadioOption checked={ownerEffect === "discountOwner"} onChange={() => setOwnerEffect("discountOwner")} label={t("extraConcepts.effects.discountOwner")} name="owner-effect" />
             </EffectPanel>
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -233,9 +242,13 @@ function ExtraConcepts({
         <RegularConceptModal
           concept={selectedConcept}
           onClose={() => setSelectedConcept(null)}
+          onSave={(updated) => {
+            setConcepts(current => current.map(item => item === selectedConcept ? updated : item))
+            setSelectedConcept(null)
+          }}
           onDelete={() => {
             const conceptIndex = visibleConcepts.findIndex(
-              (concept) => concept.detail === selectedConcept.detail,
+              (concept) => concept === selectedConcept,
             )
 
             if (conceptIndex >= 0) {
@@ -270,13 +283,13 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
   const isEditing = Boolean(concept)
   const currentDate = new Intl.DateTimeFormat("es-AR").format(new Date())
   const [conceptName, setConceptName] = useState(concept?.detail ?? "")
-  const [conceptAmount, setConceptAmount] = useState(concept?.amount ?? "")
-  const [tenantEffect, setTenantEffect] = useState("addToPayment")
-  const [ownerEffect, setOwnerEffect] = useState("addToOwner")
-  const [startDate, setStartDate] = useState(currentDate)
-  const [endDate, setEndDate] = useState("4/12/2026")
-  const [monthMode, setMonthMode] = useState("all")
-  const [selectedMonths, setSelectedMonths] = useState(months)
+  const [conceptAmount, setConceptAmount] = useState(concept?.numericAmount !== undefined ? String(Math.abs(concept.numericAmount)).replace(".", ",") : concept?.amount ?? "")
+  const [tenantEffect, setTenantEffect] = useState(concept?.tenantEffect ?? (concept?.numericAmount < 0 ? "discountPayment" : "addToPayment"))
+  const [ownerEffect, setOwnerEffect] = useState(concept?.ownerEffect ?? (concept?.numericAmount < 0 ? "discountOwner" : "addToOwner"))
+  const [startDate, setStartDate] = useState(concept?.startDate ?? currentDate)
+  const [endDate, setEndDate] = useState(concept?.endDate ?? "")
+  const [monthMode, setMonthMode] = useState(concept?.selectedMonths?.length < 12 ? "custom" : "all")
+  const [selectedMonths, setSelectedMonths] = useState(concept?.selectedMonths ? concept.selectedMonths.map(month => months[month - 1]) : months)
   const [error, setError] = useState("")
 
   function toggleMonth(month) {
@@ -310,27 +323,20 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
       return
     }
 
-    const accountItem =
-      tenantEffect === "addToPayment" || tenantEffect === "discountPayment"
-        ? {
-            apply: true,
-            detail: cleanConceptName,
-            dueDate: startDate,
-            edit:
-              tenantEffect === "discountPayment"
-                ? -numericAmount
-                : numericAmount,
-            isRegularConcept: true,
-            penalty: "$ 0,00",
-          }
-        : null
-
+    const scheduleError = validateConceptSchedule({ startDate, endDate })
+    if (scheduleError) { setError(scheduleError); return }
     onSave?.({
+      ...concept,
+      importError: undefined,
       amount: formatCurrency(numericAmount),
       detail: cleanConceptName,
-      numericAmount:
-        tenantEffect === "discountPayment" ? -numericAmount : numericAmount,
-    }, accountItem)
+      numericAmount,
+      tenantEffect,
+      ownerEffect,
+      startDate,
+      endDate,
+      selectedMonths: selectedMonths.map(month => months.indexOf(month) + 1),
+    })
     onClose()
   }
 
@@ -468,7 +474,7 @@ function RegularConceptModal({ concept, onClose, onDelete, onSave }) {
                 {t("actions.delete")}
               </Button>
             ) : null}
-            <Button onClick={isEditing ? onClose : handleSave}>
+            <Button onClick={handleSave}>
               <Save />
               {isEditing
                 ? t("extraConcepts.regularModal.saveAndExit")

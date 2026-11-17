@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { createOwnerAccountPdf } from "@/components/OwnerAccountModal"
-import { createSettlementPdf } from "@/components/RentSettlement"
+import { createSettlementPdf } from "@/lib/settlementPdf"
 import {
   Card,
   CardAction,
@@ -20,7 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { deleteReceipt, getReceipts } from "@/services/receiptsService"
+import { createLegacyReceiptPdf } from "@/lib/legacyReceiptPdf"
+import { deleteReceipt, getPaymentHistory } from "@/services/receiptsService"
 
 function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }) {
   const { t } = useTranslation()
@@ -35,7 +36,7 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
         setIsLoading(true)
       }
 
-      const receipts = await getReceipts({ contractId, kind, personName })
+      const receipts = await getPaymentHistory({ contractId, kind, personName })
 
       setPayments(receipts)
       if (!keepLoadingState) {
@@ -52,11 +53,13 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
       setIsLoading(true)
 
       try {
-        const receipts = await getReceipts({ contractId, kind, personName })
+        const receipts = await getPaymentHistory({ contractId, kind, personName })
 
         if (!ignore) {
           setPayments(receipts)
         }
+      } catch {
+        if (!ignore) setMessage(t("paymentDetails.loadError"))
       } finally {
         if (!ignore) {
           setIsLoading(false)
@@ -69,7 +72,7 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
     return () => {
       ignore = true
     }
-  }, [contractId, kind, personName])
+  }, [contractId, kind, personName, t])
 
   useEffect(() => {
     function handleReceiptsChanged(event) {
@@ -134,7 +137,10 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
           </CardAction>
         </CardHeader>
         <CardContent className="pt-4">
-          <div className="min-h-[420px] rounded-md border">
+          {payments.some(payment => payment.isHistorical) ? (
+            <p className="mb-3 text-sm text-muted-foreground">{t("paymentDetails.legacyNotice")}</p>
+          ) : null}
+          <div className="max-h-[65vh] min-h-[240px] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -168,7 +174,7 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
                   </TableRow>
                 ) : null}
                 {payments.map((payment) => (
-                  <TableRow key={payment.receipt}>
+                  <TableRow key={payment.id}>
                     <TableCell>{payment.receiptDate}</TableCell>
                     <TableCell>
                       <button
@@ -178,6 +184,9 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
                       >
                         {payment.receipt}
                       </button>
+                      {payment.isHistorical ? <span className="ml-2 text-xs text-muted-foreground">{t("paymentDetails.imported")}</span> : null}
+                      {payment.cancelled ? <span className="ml-2 text-xs text-destructive">{t("paymentDetails.cancelled")}</span> : null}
+                      {payment.snapshot?.reviewReasons?.length ? <span className="ml-2 text-xs text-amber-700">{t("paymentDetails.review")}</span> : null}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(payment.total)}
@@ -189,6 +198,7 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
                       {formatCurrency(payment.balance)}
                     </TableCell>
                     <TableCell className="text-center">
+                      {payment.isHistorical ? <span className="text-xs text-muted-foreground">{t("paymentDetails.readOnly")}</span> : (
                       <div className="inline-flex items-center gap-1">
                         <Button
                           aria-label={t("actions.delete")}
@@ -210,6 +220,7 @@ function PaymentDetailsModal({ contract, contractId, kind, onClose, personName }
                           />
                         ) : null}
                       </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -267,7 +278,7 @@ function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
 
   useEffect(() => {
     const savedPdfUrl =
-      receipt.pdfBase64 && isCurrentReceiptPdf(receipt.pdfBase64)
+      receipt.pdfBase64
         ? `data:application/pdf;base64,${receipt.pdfBase64}`
         : ""
 
@@ -277,7 +288,9 @@ function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
       return undefined
     }
 
-    const rebuiltPdf = rebuildReceiptPdf({ contract, kind, receipt })
+    const rebuiltPdf = receipt.isHistorical
+      ? createLegacyReceiptPdf(receipt)
+      : rebuildReceiptPdf({ contract, kind, receipt })
 
     if (!rebuiltPdf) {
       setPdfUrl(receipt.pdfBase64 ? `data:application/pdf;base64,${receipt.pdfBase64}` : "")
@@ -295,7 +308,7 @@ function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
     <div className="fixed inset-0 z-[60] grid place-items-center bg-background/80 p-6 backdrop-blur-sm">
       <Card className="h-[90vh] w-full max-w-5xl overflow-hidden shadow-lg">
         <CardHeader className="flex flex-row items-center justify-between border-b">
-          <CardTitle>PDF recibo N° {receipt.receipt}</CardTitle>
+          <CardTitle>{receipt.isHistorical ? "PDF recibo histórico" : "PDF recibo"} N° {receipt.receipt}{receipt.cancelled ? " — ANULADO" : ""}</CardTitle>
           <div className="flex gap-2">
             <Button onClick={onClose} size="sm" variant="outline">
               <ArrowLeft />
@@ -328,6 +341,7 @@ function ReceiptPdfModal({ contract, kind, onClose, receipt }) {
 
 function rebuildReceiptPdf({ contract, kind, receipt }) {
   const items = receipt.snapshot?.items ?? []
+  contract = receipt.snapshot?.contract ?? contract
 
   if (!contract || items.length === 0) {
     return null
@@ -375,21 +389,12 @@ function rebuildReceiptPdf({ contract, kind, receipt }) {
   })
 }
 
-function isCurrentReceiptPdf(pdfBase64) {
-  try {
-    const pdfText = atob(pdfBase64)
-
-    return pdfText.includes("Es copia:") || pdfText.includes("/Count 2")
-  } catch {
-    return false
-  }
-}
-
 function formatCurrency(value) {
+  if (value === null || value === undefined) return "—"
   return new Intl.NumberFormat("es-AR", {
     currency: "ARS",
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
     style: "currency",
   }).format(Number(value || 0))
 }

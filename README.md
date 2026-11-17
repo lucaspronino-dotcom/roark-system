@@ -46,6 +46,8 @@ docker compose -f docker-compose.dev.yml down
 - [Desarrollo](docs/development.md): como correr hot reload, URLs, DNS dev y variables locales.
 - [Produccion](docs/production.md): compose productivo, Nginx, certificados y verificaciones.
 - [Base de datos](docs/database.md): bases, volumenes, migraciones, seed y backups.
+- [Migración antigua](docs/legacy-migration.md): resultado, mapeo exacto y cómo probar otro ODS.
+- [Reutilizar la migración en producción](docs/legacy-migration-retry.md#reutilizar-la-migración-para-producción): scripts, plan validado y pendientes antes del pase.
 - [Mantenimiento](docs/maintenance.md): limpieza de recursos viejos y comandos de diagnostico.
 
 ## Estructura Docker

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common"
-import { Prisma, Receipt, ReceiptKind } from "@prisma/client"
+import { Prisma, Receipt, ReceiptKind, ReceiptOrigin } from "@prisma/client"
 
 import { PrismaService } from "../prisma/prisma.service"
 import { CreateReceiptDto } from "./dto/create-receipt.dto"
@@ -12,10 +12,12 @@ export class ReceiptsService {
     contractId,
     kind,
     personName,
+    includeHistorical = false,
   }: {
     contractId?: string
     kind?: ReceiptKind
     personName?: string
+    includeHistorical?: boolean
   }) {
     const receipts = await this.prisma.receipt.findMany({
       orderBy: [
@@ -29,7 +31,8 @@ export class ReceiptsService {
       where: {
         contractId,
         kind,
-        personName: personName ? { equals: personName, mode: "insensitive" } : undefined,
+        origin: includeHistorical ? undefined : ReceiptOrigin.NATIVE,
+        personName: !contractId && personName ? { equals: personName, mode: "insensitive" } : undefined,
       },
     })
 
@@ -65,11 +68,33 @@ export class ReceiptsService {
       throw new BadRequestException("No se puede crear un recibo sin conceptos")
     }
 
+    const contract = await this.prisma.contract.findUniqueOrThrow({
+      where: { id: createReceiptDto.contractId },
+      select: {
+        settings: true, folder: true, startDate: true, endDate: true,
+        property: { select: { address: true } },
+        tenant: { select: { person: { select: { firstName: true, lastName: true } } } },
+        owner: { select: { person: { select: { firstName: true, lastName: true } } } },
+      },
+    })
+    const settings = contract.settings as { legacy?: { reconciliationRequired?: boolean } } | null
+    if (settings?.legacy?.reconciliationRequired === true) {
+      throw new BadRequestException("Revisá saldos y conceptos del contrato importado antes de liquidar")
+    }
+
     const number = createReceiptDto.number ?? (await this.getNextReceiptNumber())
     const snapshot = {
+      contract: {
+        folder: contract.folder, address: contract.property.address,
+        tenant: `${contract.tenant.person.lastName}, ${contract.tenant.person.firstName}`.toLowerCase(),
+        owner: `${contract.owner.person.lastName}, ${contract.owner.person.firstName}`.toLowerCase(),
+        startDate: formatDate(contract.startDate), end: formatDate(contract.endDate),
+      },
       items: createReceiptDto.items.map((item) => ({
         administration: item.administration,
         amount: item.amount,
+        ownerAmount: item.ownerAmount,
+        conceptId: item.conceptId,
         description: item.description,
         dueDate: item.dueDate,
         penalties: item.penalties,
@@ -113,6 +138,10 @@ export class ReceiptsService {
         id,
       },
     })
+
+    if (targetReceipt?.origin === ReceiptOrigin.LEGACY) {
+      throw new BadRequestException("El histórico importado es de solo lectura")
+    }
 
     if (targetReceipt?.kind === ReceiptKind.TENANT_SETTLEMENT) {
       const targetPeriods = new Set(getReceiptPeriodKeys(targetReceipt))
@@ -166,7 +195,10 @@ function toReceiptListItem(
   return {
     balance: receipt.balance,
     id: receipt.id,
-    isDeleteBlocked: options.isDeleteBlocked ?? false,
+    isHistorical: receipt.origin === ReceiptOrigin.LEGACY,
+    cancelled: (receipt.snapshot as { cancelled?: boolean } | null)?.cancelled ?? false,
+    personName: receipt.personName,
+    isDeleteBlocked: receipt.origin === ReceiptOrigin.LEGACY || (options.isDeleteBlocked ?? false),
     paid: receipt.paid,
     pdfBase64: receipt.pdfBase64,
     receipt: String(receipt.number),
@@ -196,6 +228,7 @@ function formatDate(date: Date) {
 }
 
 function getReceiptPeriodKeys(receipt: Receipt) {
+  if (receipt.origin === ReceiptOrigin.LEGACY) return []
   const snapshot = receipt.snapshot as ReceiptSnapshot | null
   const dueDates =
     snapshot?.items

@@ -21,6 +21,7 @@ services:
       - roark_dev
 
   api:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/dev/Dockerfile
@@ -48,6 +49,7 @@ services:
           - roark_dev_api
 
   web:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/dev/Dockerfile

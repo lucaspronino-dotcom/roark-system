@@ -26,3 +26,9 @@ dist-ssr
 *.sln
 *.sw?
 .~lock.*#
+
+# Datos reales de migracion
+/private/
+
+# Cache de herramientas Python
+__pycache__/

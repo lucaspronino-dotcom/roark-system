@@ -109,7 +109,6 @@ function NewOwnerModal({ onClose, onSaved }) {
                     label={t("newTenant.fields.dni")}
                     name="dni"
                     onChange={updateField}
-                    required
                     value={form.dni}
                   />
                   <Field

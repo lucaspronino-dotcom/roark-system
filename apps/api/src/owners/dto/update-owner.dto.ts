@@ -11,7 +11,7 @@ export class UpdateOwnerDto {
 
   @IsString()
   @IsOptional()
-  dni?: string
+  dni?: string | null
 
   @IsString()
   @IsOptional()

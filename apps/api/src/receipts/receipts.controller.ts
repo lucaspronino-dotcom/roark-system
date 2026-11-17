@@ -13,8 +13,9 @@ export class ReceiptsController {
     @Query("contractId") contractId?: string,
     @Query("kind") kind?: ReceiptKind,
     @Query("personName") personName?: string,
+    @Query("includeHistorical") includeHistorical?: string,
   ) {
-    return this.receiptsService.findAll({ contractId, kind, personName })
+    return this.receiptsService.findAll({ contractId, kind, personName, includeHistorical: includeHistorical === "true" })
   }
 
   @Get("next-number")

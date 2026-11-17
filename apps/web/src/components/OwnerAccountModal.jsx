@@ -1,3 +1,4 @@
+import { getOwnerConceptAmount } from "@/lib/regularConcepts"
 import { ArrowLeft, Download, Printer, Save, Trash2, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -60,9 +61,11 @@ function OwnerAccountModal({ contract, onClose }) {
     const settledKeys = getOwnerSettledItemKeys(ownerReceipts)
     const receiptItems = tenantReceipts.flatMap((receipt) =>
       getReceiptSnapshotItems(receipt)
+        .filter(item => item.ownerAmount !== 0)
         .map((item, index) =>
           createOwnerAccountItem({
-            amount: Number(item.amount || 0),
+            amount: getOwnerConceptAmount(item),
+            conceptId: item.conceptId,
             date: item.dueDate,
             description: item.description,
             id: `tenant-${receipt.id}-${index}`,
@@ -193,6 +196,7 @@ function OwnerAccountModal({ contract, onClose }) {
         date: today,
         items: items.map((item) => ({
           administration: item.administration,
+          conceptId: item.conceptId,
           amount: item.amount,
           description: item.description,
           dueDate: item.date,
@@ -828,6 +832,7 @@ function clearDeletedOwnerItemKeys(contractId) {
 }
 
 function createOwnerAccountItem({
+  conceptId,
   amount,
   date,
   description,
@@ -838,6 +843,7 @@ function createOwnerAccountItem({
   const administration = isRentInstallment(description) ? amount * 0.05 : 0
 
   return {
+    conceptId,
     administration,
     amount,
     date,
@@ -860,6 +866,7 @@ function getOwnerSettledItemKeys(receipts) {
     getReceiptSnapshotItems(receipt).forEach((item) => {
       keys.add(
         getOwnerItemSourceKey({
+          conceptId: item.conceptId,
           amount: Number(item.amount || 0),
           date: item.dueDate,
           description: item.description,
@@ -891,7 +898,7 @@ function uniqueOwnerAccountItems(items) {
 }
 
 function getOwnerItemSourceKey(item) {
-  return [
+  return (item.conceptId ? `${item.conceptId}|` : "") + [
     getMonthKey(item.date),
     normalizeOwnerItemDescription(item.description),
     Number(item.amount || 0),

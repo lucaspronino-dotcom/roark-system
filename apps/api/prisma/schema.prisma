@@ -11,7 +11,7 @@ model Person {
   id        String   @id @default(uuid()) @db.Uuid
   firstName String
   lastName  String
-  dni       String   @unique
+  dni       String?  @unique
   phone     String
   email     String?
   createdAt DateTime @default(now())
@@ -65,7 +65,7 @@ model Property {
   owners    PropertyOwner[]
   contracts Contract[]
 
-  @@unique([folder, address])
+  @@index([folder, address])
   @@map("properties")
 }
 
@@ -111,14 +111,15 @@ model Contract {
 model Receipt {
   id         String      @id @default(uuid()) @db.Uuid
   number     Int         @unique
+  origin     ReceiptOrigin @default(NATIVE)
   kind       ReceiptKind
   date       DateTime
-  total      Float
-  paid       Float
-  balance    Float
+  total      Float?
+  paid       Float?
+  balance    Float?
   personName String
   contractId String      @db.Uuid
-  pdfBase64  String
+  pdfBase64  String?
   snapshot   Json
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -157,4 +158,9 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([expiresAt])
   @@map("sessions")
+}
+
+enum ReceiptOrigin {
+  NATIVE
+  LEGACY
 }

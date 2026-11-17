@@ -1,3 +1,4 @@
+import { requiresSettlementReview } from "./legacyMigration.js"
 import { getPendingFrom } from "./periodPreferences.js"
 
 function parseDate(value) {
@@ -16,6 +17,7 @@ export function getPendingRentalDates(
   today = new Date(),
   throughDate = today,
 ) {
+  if (requiresSettlementReview(contract)) return []
   const start = parseDate(contract.startDate)
   const end = parseDate(contract.end)
   if (
@@ -32,6 +34,7 @@ export function getPendingRentalDates(
   )
   const paidMonths = new Set()
   for (const receipt of receipts) {
+    if (receipt.isHistorical) continue
     const items = receipt.snapshot?.items
     if (!Array.isArray(items) || items.length === 0) {
       paidMonths.add(monthKey(parseDate(receipt.receiptDate)))
@@ -59,6 +62,7 @@ export function getPendingRentalDates(
 }
 
 export function getOutstandingRentalBalances(receipts = []) {
+  receipts = receipts.filter(receipt => !receipt.isHistorical)
   const allItems = receipts.flatMap((receipt) => receipt.snapshot?.items ?? [])
   return receipts.flatMap((receipt) => {
     if (
@@ -91,6 +95,7 @@ export function getOutstandingRentalBalances(receipts = []) {
 }
 
 export function isRentalItemInRange(item, contract, today = new Date(), throughDate = today) {
+  if (requiresSettlementReview(contract)) return false
   const date = parseDate(item.dueDate)
   const start = parseDate(contract.startDate)
   const end = parseDate(contract.end)
@@ -101,6 +106,7 @@ export function isRentalItemInRange(item, contract, today = new Date(), throughD
 
 
 export function getNextRentalPeriod(contract, currentPeriod) {
+  if (requiresSettlementReview(contract)) return null
   const start = parseDate(contract.startDate)
   const end = parseDate(contract.end)
   if ([start, end, currentPeriod].some((date) => Number.isNaN(date.getTime()))) return null

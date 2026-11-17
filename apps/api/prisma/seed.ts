@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { PrismaClient } from "@prisma/client"
 import { ContractStatus } from "@prisma/client"
 
@@ -163,19 +164,18 @@ async function main() {
       },
     })
 
+    // Stable demo identity; folder and address are no longer unique in business data.
+    const digest = createHash("sha256").update(JSON.stringify(["roark-demo", contract.folder, contract.rentalAddress])).digest("hex")
+    const propertyId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20, 32)}`
     const property = await prisma.property.upsert({
-      where: {
-        folder_address: {
-          folder: contract.folder,
-          address: contract.rentalAddress,
-        },
-      },
+      where: { id: propertyId },
       update: {
         city: "Olavarria",
         status: "En alquiler 24M",
         type: "Vivienda",
       },
       create: {
+        id: propertyId,
         folder: contract.folder,
         address: contract.rentalAddress,
         city: "Olavarria",

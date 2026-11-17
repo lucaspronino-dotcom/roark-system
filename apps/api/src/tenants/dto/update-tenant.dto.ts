@@ -11,7 +11,7 @@ export class UpdateTenantDto {
 
   @IsString()
   @IsOptional()
-  dni?: string
+  dni?: string | null
 
   @IsString()
   @IsOptional()

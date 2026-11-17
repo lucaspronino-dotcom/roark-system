@@ -1,4 +1,9 @@
+import { ContractFiltersDrawer } from "@/components/ContractFiltersDrawer"
+import { filterContracts } from "@/lib/contractFilters"
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BookOpen,
   CalendarDays,
   CircleHelp,
@@ -9,7 +14,7 @@ import {
   Search,
   User,
 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -30,8 +35,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+import { contractSortColumns, nextContractSort, sortContracts } from "@/lib/contractSorting"
+
+const columnIcons = { folder: Folder, endDate: CalendarDays, address: Home, status: CircleHelp, tenant: User, owner: User }
+
 function ContractsTable({
   contracts = [],
+  sort: controlledSort,
+  onSortChange,
+  sortingMode = "client",
   error,
   isLoading = false,
   onContractsChanged,
@@ -43,14 +55,18 @@ function ContractsTable({
   const [isNewPropertyOpen, setIsNewPropertyOpen] = useState(false)
   const [isFinanceOpen, setIsFinanceOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [showExpired, setShowExpired] = useState(true)
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedPaymentDetails, setSelectedPaymentDetails] = useState(null)
-  const visibleContracts = contracts.filter((contract) =>
-    [contract.folder, contract.end, contract.address, contract.status, contract.tenant, contract.owner]
-      .join(" ")
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  )
+  const [localSort, setLocalSort] = useState({ field: "folder", direction: "asc" })
+  const sort = controlledSort === undefined ? localSort : controlledSort
+  function changeSort(field) {
+    const next = nextContractSort(sort, field)
+    if (controlledSort === undefined) setLocalSort(next)
+    onSortChange?.(next)
+  }
+  const sortedContracts = useMemo(() => sortContracts(contracts, sort, sortingMode), [contracts, sort, sortingMode])
+  const visibleContracts = filterContracts(sortedContracts, { search, showExpired })
 
   return (
     <section className="w-full space-y-4">
@@ -93,6 +109,9 @@ function ContractsTable({
           <Search className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
         </div>
         </div>
+        <div className="flex justify-end lg:col-start-3">
+          <ContractFiltersDrawer showExpired={showExpired} onShowExpiredChange={setShowExpired} />
+        </div>
       </div>
 
       <div className="hidden rounded-md border bg-card lg:block">
@@ -107,12 +126,17 @@ function ContractsTable({
           </colgroup>
           <TableHeader>
             <TableRow>
-              <HeaderCell icon={Folder}>{t("table.columns.folder")}</HeaderCell>
-              <HeaderCell icon={CalendarDays}>{t("table.columns.end")}</HeaderCell>
-              <HeaderCell icon={Home}>{t("table.columns.address")}</HeaderCell>
-              <HeaderCell icon={CircleHelp}>{t("table.columns.status")}</HeaderCell>
-              <HeaderCell icon={User}>{t("table.columns.collections")}</HeaderCell>
-              <HeaderCell icon={User}>{t("table.columns.settlement")}</HeaderCell>
+              {contractSortColumns.map(column => (
+                <HeaderCell
+                  key={column.field}
+                  icon={columnIcons[column.field]}
+                  direction={sort?.field === column.field ? sort.direction : null}
+                  onClick={() => changeSort(column.field)}
+                  label={t("table.sortBy", { column: t(column.label), direction: t(sort?.field === column.field && sort.direction === "asc" ? "table.descending" : "table.ascending") })}
+                >
+                  {t(column.label)}
+                </HeaderCell>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -140,7 +164,7 @@ function ContractsTable({
             {visibleContracts.map((contract, index) => (
               <ContractRow
                 contract={contract}
-                key={`${contract.folder}-${contract.end}-${index}`}
+                key={contract.id ?? `${contract.folder}-${contract.end}-${index}`}
                 onOpenContract={onOpenContract}
                 onOpenProperty={onOpenProperty}
                 onOpenRentSettlement={onOpenRentSettlement}
@@ -150,6 +174,24 @@ function ContractsTable({
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex items-center gap-2 lg:hidden">
+        <label htmlFor="contract-sort" className="text-sm">{t("table.sortLabel")}</label>
+        <select
+          id="contract-sort"
+          className="min-w-0 rounded-md border bg-background px-2 py-2 text-sm"
+          value={sort?.field ?? ""}
+          onChange={event => changeSort(event.target.value)}
+        >
+          <option value="" disabled>{t("table.sortLabel")}</option>
+          {contractSortColumns.map(column => <option key={column.field} value={column.field}>{t(column.label)}</option>)}
+        </select>
+        <Button type="button" variant="outline" disabled={!sort} onClick={() => changeSort(sort.field)}
+          aria-label={t("table.sortBy", { column: t(contractSortColumns.find(column => column.field === sort?.field)?.label ?? "table.sortLabel"), direction: t(sort?.direction === "asc" ? "table.descending" : "table.ascending") })}>
+          {sort?.direction === "desc" ? <ArrowDown aria-hidden="true" className="size-4" /> : <ArrowUp aria-hidden="true" className="size-4" />}
+          {t(sort?.direction === "desc" ? "table.descending" : "table.ascending")}
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:hidden">
@@ -174,7 +216,7 @@ function ContractsTable({
               onOpenRentSettlement,
             })}
             contract={contract}
-            key={`${contract.folder}-${contract.end}-${index}`}
+            key={contract.id ?? `${contract.folder}-${contract.end}-${index}`}
           />
         ))}
       </div>
@@ -229,13 +271,16 @@ function ResponsiveMessage({ children, className = "text-muted-foreground" }) {
   )
 }
 
-function HeaderCell({ children, icon: Icon }) {
+function HeaderCell({ children, icon: Icon, direction, onClick, label }) {
+  const SortIcon = direction === "asc" ? ArrowUp : direction === "desc" ? ArrowDown : ArrowUpDown
   return (
-    <TableHead>
-      <div className="flex items-center gap-2">
-        <Icon className="size-4 text-muted-foreground" />
+    <TableHead scope="col" aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}>
+      <button type="button" onClick={onClick} aria-label={label} title={label}
+        className="flex min-h-10 w-full items-center gap-1 rounded-sm text-left hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">
+        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <span>{children}</span>
-      </div>
+        <SortIcon aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
+      </button>
     </TableHead>
   )
 }

@@ -86,3 +86,11 @@ Antes esta app estaba publicada con systemd usando `npm run dev:host -w @roark/w
 ```bash
 sudo systemctl disable --now roark-web roark-api
 ```
+
+## Migración desde la planilla antigua
+
+Consultar [reutilización de la migración para producción](legacy-migration-retry.md#reutilizar-la-migración-para-producción)
+para los scripts, el plan validado en desarrollo y los pendientes del pase.
+El conversor ODS se puede reutilizar, pero el importador y el verificador actuales
+solo admiten `db_roark_dev`. Todavía falta habilitar y ensayar el flujo productivo,
+definir el tratamiento de los datos existentes y resolver el histórico de pagos.
